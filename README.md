@@ -1,7 +1,7 @@
 # WARSTRIKE
 
 A browser FPS built from scratch with **Three.js + TypeScript**, taking inspiration from Warzone's gunplay and Blood Strike's pace.
-The long-term goal is a battle royale; this first build is a **gun range** for getting movement and gunplay feeling right before anything else.
+The long-term goal is a battle royale. Build 0.2 has two maps: a **gun range** for dialling in movement and gunplay, and **Harbor Outskirts**, the first piece of the big map.
 
 ## Play
 
@@ -15,6 +15,23 @@ Or build a single self-contained file you can double-click or send to a friend:
 ```bash
 npm run share      # → Warstrike.html (no server needed)
 ```
+
+## What's new in build 0.2
+
+**Harbor Outskirts**, the first chunk of the battle royale map (about 240 × 240 m), abandoned and overgrown:
+- **Maple Street:** five enterable houses (two with an upstairs), furnished rooms, porches you can climb onto, a burnt-out ruin, fences, yards, a snapped power pole across the road.
+- **Harbor Fuel gas station:** canopy and pumps, and an enterable **Harbor Mart**. A car has gone through the front window, and crates behind it lead up onto the roof.
+- **East side:** Dale's Auto Repair, a trailer home, a billboard and wild fields.
+- **Port of Calvert** past the chain-link fence:
+  - a warehouse with a mezzanine and climbable pallet racks;
+  - a container yard with open containers;
+  - a 50 m gantry crane;
+  - fuel tanks and the quay, with a container ship offshore.
+- Wind-blown instanced grass, leaf-card trees, bushes and ivy. Hills and woods hide the map edge.
+- 12 bots placed around the map: in buildings, on roofs, and strafing in the container aisles and on Maple Street.
+- Walls are penetrable according to their material: siding and drywall let rounds through, brick and containers stop them.
+
+**Range:** infinite reserve ammo.
 
 ## What's in build 0.1
 
@@ -33,6 +50,7 @@ npm run share      # → Warstrike.html (no server needed)
 - Sniper scope with breath sway: hold Shift to steady it for 4 s.
 
 **Range**
+- Infinite reserve ammo (build 0.2).
 - Steel plates at 10 / 25 / 50 / 100 / 200 / 300 m. The ding arrives with the speed of sound.
 - Strafing bots with 100 HP + 50 armour, and head / body / limb hitboxes.
 - A wallbang lane with wood, 30 cm concrete and 1 m concrete walls.
@@ -66,7 +84,8 @@ src/
   Game.ts            frame loop, camera feel, damage and feedback
   core/              input (pointer lock), settings, math
   render/            renderer + post, procedural textures, materials, effects (decals, tracers, particles)
-  world/             box colliders and the range map
+  world/             box colliders, the World interface, the geometry Builder (merges static meshes), the range
+  world/town/        Harbor Outskirts: materials, props, buildings, port, vegetation, layout
   player/            movement: sprint, crouch, slide, mantle
   weapons/           gun stats, firing, recoil, ballistics, first-person view models
   targets/           steel plates and bots

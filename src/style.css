@@ -94,6 +94,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 button.primary { width: 100%; padding: 14px; font-size: 20px; font-weight: 800; letter-spacing: 0.2em; background: var(--accent); color: #111;
   border: 0; }
 button.primary:hover { filter: brightness(1.1); }
+.hidden { display: none !important; }
+#maps { display: grid; gap: 10px; }
+button.map { text-align: left; padding: 14px 16px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line);
+  border-left: 3px solid var(--accent); }
+button.map:hover { background: rgba(240, 192, 64, 0.12); }
+button.map b { display: block; font-size: 18px; letter-spacing: 0.14em; }
+button.map span { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+button.map:disabled { opacity: 0.5; cursor: wait; }
+button.ghost { width: 100%; margin-top: 8px; padding: 10px; background: none; border: 1px solid var(--line); color: var(--muted); }
+button.ghost:hover { color: var(--text); }
 .tabs { display: flex; gap: 4px; margin: 22px 0 12px; border-bottom: 1px solid var(--line); }
 .tabs button { background: none; border: 0; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent; }
 .tabs button.on { color: var(--text); border-bottom-color: var(--accent); }

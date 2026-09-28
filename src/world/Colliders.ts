@@ -7,6 +7,8 @@ export interface Box {
   min: Vector3;
   max: Vector3;
   surface: Surface;
+  /** Player-only clip (map edges): stops movement, bullets pass through. */
+  clip?: boolean;
 }
 
 /**
@@ -63,8 +65,8 @@ export function boxExit(o: Vector3, d: Vector3, b: Box): number {
 export class Colliders {
   readonly boxes: Box[] = [];
 
-  add(min: Vector3, max: Vector3, surface: Surface): Box {
-    const b = { min: min.clone(), max: max.clone(), surface };
+  add(min: Vector3, max: Vector3, surface: Surface, clip = false): Box {
+    const b: Box = { min: min.clone(), max: max.clone(), surface, clip };
     this.boxes.push(b);
     return b;
   }
@@ -73,7 +75,7 @@ export class Colliders {
   raycast(o: Vector3, d: Vector3, maxT: number, skip?: Box): RayHit | null {
     let best: RayHit | null = null;
     for (const b of this.boxes) {
-      if (b === skip) continue;
+      if (b === skip || b.clip) continue;
       const t = rayBox(o, d, b, best ? best.t : maxT);
       if (t >= 0 && (!best || t < best.t)) {
         if (best) { best.t = t; best.box = b; best.normal.copy(hitNormal); }

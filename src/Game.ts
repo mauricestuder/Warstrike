@@ -13,6 +13,10 @@ import { falloffMul, type GunDef } from './weapons/defs';
 import { ViewModel } from './weapons/ViewModel';
 import { Weapons } from './weapons/Weapons';
 import { Range } from './world/Range';
+import { Town } from './world/town/Town';
+import type { World } from './world/World';
+
+export type MapId = 'range' | 'town';
 
 /** Wires everything together and runs the frame: input → movement → weapons → bullets → camera → render. */
 export class Game {
@@ -20,7 +24,7 @@ export class Game {
   readonly input: Input;
   readonly sfx = new Sfx();
   readonly hud = new Hud();
-  readonly range: Range;
+  readonly world: World;
   readonly player: Player;
   readonly targets: Targets;
   readonly fx: Effects;
@@ -37,27 +41,29 @@ export class Game {
   /** Latest damage events (exposed for automated tests). */
   readonly log: { zone: Zone; dmg: number; dist: number; wallbang: boolean; steel: boolean }[] = [];
 
-  constructor(public settings: Settings) {
+  constructor(public settings: Settings, readonly map: MapId) {
     this.renderer = new Renderer(settings.quality);
     this.input = new Input(this.renderer.gl.domElement);
-    this.range = new Range(this.renderer);
+    const w = this.world = map === 'town' ? new Town(this.renderer) : new Range(this.renderer);
     this.fx = new Effects(this.renderer.scene);
-    this.targets = new Targets(this.renderer, this.range.steel, this.range.botLanes, this.range.wallDummies);
-    this.player = new Player(this.range.colliders, {
+    this.targets = new Targets(this.renderer, w.steel, w.botLanes, w.wallDummies);
+    this.player = new Player(w.colliders, {
       step: (s) => this.sfx.step(s),
       jump: () => this.sfx.jump(),
       land: (v) => { this.sfx.land(v); this.landV -= Math.min(v, 12) * 0.018; this.vm.land(v); },
       slide: () => this.sfx.slide(),
       mantle: () => this.sfx.mantle(),
     });
-    this.player.spawn(this.range.spawn, 0);
-    this.ballistics = new Ballistics(this.range.colliders, this.targets, {
+    this.player.spawn(w.spawn, w.spawnYaw);
+    this.ballistics = new Ballistics(w.colliders, this.targets, {
       impact: (p, n, s, exit) => { this.fx.impact(p, n, s); void exit; },
       hit: (t, zone, gun, mul, dist, p, dir, wb) => this.onHit(t, zone, gun, mul, dist, p, dir, wb),
       tracer: (a, b, bullet) => this.fx.tracer(a, b, bullet ? 0.016 : 0.01, bullet ? 0.035 : 0.04),
     });
     this.vm = new ViewModel(this.renderer.vmScene);
     this.weapons = new Weapons(this.player, this.vm, this.ballistics, this.sfx, this.hud, this.fx);
+    this.weapons.infiniteReserve = w.infiniteAmmo;
+    this.weapons.refill();
     this.applySettings();
     requestAnimationFrame(() => this.frame());
   }
@@ -126,6 +132,9 @@ export class Game {
     w.update(dt, input, cam);
     this.ballistics.update(dt);
     this.targets.update(dt, p.pos);
+    this.world.update(dt, cam.position);
+    // Safety net: anything that ends up outside the world goes back to spawn.
+    if (p.pos.y < -20) p.spawn(this.world.spawn, this.world.spawnYaw);
     this.fx.update(dt);
 
     if (input.wasPressed('KeyH')) document.getElementById('help')!.classList.toggle('show');

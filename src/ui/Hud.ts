@@ -69,7 +69,7 @@ export class Hud {
   setGun(name: string) { this.gunName.textContent = name; }
 
   setAmmo(mag: number, reserve: number, magSize: number) {
-    this.ammo.innerHTML = `<b class="${mag <= magSize * 0.25 ? 'low' : ''}">${mag}</b><span>${reserve}</span>`;
+    this.ammo.innerHTML = `<b class="${mag <= magSize * 0.25 ? 'low' : ''}">${mag}</b><span>${reserve === Infinity ? '∞' : reserve}</span>`;
   }
 
   setMove(speed: number, stance: string, lastSlide: number) {

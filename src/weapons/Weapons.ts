@@ -49,6 +49,8 @@ export class Weapons {
   private holdLeft = BREATH_HOLD;
   private winded = 0;
   private holding = false;
+  /** Range mode: reloads never use up reserve ammo. */
+  infiniteReserve = false;
   /** Spread (half-angle, rad) used for the crosshair. */
   spread = 0;
   private readonly tmpDir = new Vector3();
@@ -81,7 +83,7 @@ export class Weapons {
 
   private syncAmmo() {
     const g = this.guns[this.idx];
-    this.hud.setAmmo(g.mag, g.reserve, g.def.mag);
+    this.hud.setAmmo(g.mag, this.infiniteReserve ? Infinity : g.reserve, g.def.mag);
   }
 
   /** Refill everything (range convenience). */
@@ -92,7 +94,7 @@ export class Weapons {
 
   private startReload() {
     const g = this.guns[this.idx];
-    if (this.reloading || g.mag >= g.def.mag || g.reserve <= 0) return;
+    if (this.reloading || g.mag >= g.def.mag || (g.reserve <= 0 && !this.infiniteReserve)) return;
     this.reloadEmpty = g.mag === 0;
     this.reloadDur = this.reloadEmpty ? g.def.reloadEmpty : g.def.reload;
     this.reloadT = 0;
@@ -113,9 +115,9 @@ export class Weapons {
     if (this.reloading) {
       this.reloadT += dt;
       if (this.reloadT >= this.reloadDur) {
-        const take = Math.min(d.mag - g.mag, g.reserve);
+        const take = this.infiniteReserve ? d.mag - g.mag : Math.min(d.mag - g.mag, g.reserve);
         g.mag += take;
-        g.reserve -= take;
+        if (!this.infiniteReserve) g.reserve -= take;
         this.reloadT = -1;
         this.syncAmmo();
       }
@@ -223,7 +225,7 @@ export class Weapons {
     const heavy = d.id === 'sniper';
     this.vm.kick((heavy ? 0.16 : 0.035) * (1 - this.ads * 0.5), heavy ? 1.6 : 0.55, (Math.random() - 0.5) * 0.04);
     this.syncAmmo();
-    if (g.mag === 0 && g.reserve > 0) setTimeout(() => { if (this.guns[this.idx] === g && g.mag === 0) this.startReload(); }, 250);
+    if (g.mag === 0 && (g.reserve > 0 || this.infiniteReserve)) setTimeout(() => { if (this.guns[this.idx] === g && g.mag === 0) this.startReload(); }, 250);
   }
 
   /** Scoped sway: slow figure-eight. Shift steadies it for a few seconds, then you're winded. */

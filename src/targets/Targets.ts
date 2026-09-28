@@ -4,7 +4,7 @@ import {
 } from 'three';
 import { clamp, rand } from '../core/math';
 import type { Renderer } from '../render/Renderer';
-import type { BotLane, SteelSpot } from '../world/Range';
+import type { BotLane, SteelSpot } from '../world/World';
 
 export type Zone = 'head' | 'body' | 'limb';
 

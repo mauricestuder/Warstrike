@@ -9,8 +9,12 @@ Each session builds on the last. Movement and gunplay come first, because everyt
 - Steel targets, strafing bots, wallbang lane, movement course.
 - HUD, synthesized audio, settings menu, single-file share build.
 
-## Session 2: First real map, loot and bots
-- A larger map chunk: a small town with enterable buildings, windows, rooftops and a hill.
+## ✅ Session 2a: First map chunk (build 0.2)
+- Harbor Outskirts: an overgrown suburb, a gas station, an auto shop and a port (warehouse, container yard, crane, tanks).
+- Infinite reserve ammo on the range, and a map picker in the menu.
+
+## Session 2b: Loot and bots
+- Grow the map outward: an old town centre, a farm, a hill with radio towers, and a river.
 - Loot: ground loot with rarities, armour plates (plate up with a key), ammo types, cash.
 - Bots that move, take cover, peek, shoot back and push.
 - Player health, armour, downs and self-revive.

@@ -8,8 +8,7 @@ import { Materials, worldBox } from '../render/Materials';
 import type { Renderer } from '../render/Renderer';
 import { Colliders, type Surface } from './Colliders';
 
-export interface SteelSpot { pos: Vector3; w: number; h: number; }
-export interface BotLane { center: Vector3; halfWidth: number; }
+import type { BotLane, SteelSpot, World } from './World';
 
 /**
  * The gun range: a covered firing line, a centre lane of steel plates from 10 to 300 m, a bot pen for tracking,
@@ -18,10 +17,13 @@ export interface BotLane { center: Vector3; halfWidth: number; }
  *
  * Forward (downrange) is -z. The firing line is at z ≈ 0.
  */
-export class Range {
+export class Range implements World {
   readonly colliders = new Colliders();
   readonly root = new Group();
   readonly spawn = new Vector3(0, 0.12, 4);
+  readonly spawnYaw = 0;
+  readonly infiniteAmmo = true;
+  readonly welcome = 'Welcome to the range · steel downrange, bots right, wallbang lane left, movement course behind you';
   readonly steel: SteelSpot[] = [];
   readonly botLanes: BotLane[] = [];
   /** Standing dummies placed behind the wallbang walls. */
@@ -39,6 +41,8 @@ export class Range {
     this.movementCourse();
     this.scenery();
   }
+
+  update() {}
 
   /** A solid box: mesh + collider. (x, z) is the centre of the footprint, y the bottom. */
   private solid(x: number, y: number, z: number, w: number, h: number, d: number, surface: Surface,
