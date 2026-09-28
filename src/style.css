@@ -1,0 +1,116 @@
+:root {
+  --accent: #f0c040;
+  --text: #f2f2ee;
+  --muted: #a9aca6;
+  --panel: rgba(14, 16, 18, 0.86);
+  --line: rgba(255, 255, 255, 0.12);
+  --font: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0e10; color: var(--text); font-family: var(--font); }
+canvas { display: block; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; user-select: none; }
+
+/* Crosshair: four lines whose distance from centre is the real spread. */
+#crosshair { --gap: 20px; position: absolute; left: 50%; top: 50%; transition: opacity 0.08s; }
+#crosshair i { position: absolute; background: #fff; box-shadow: 0 0 2px rgba(0, 0, 0, 0.9); }
+#crosshair .t, #crosshair .b { width: 2px; height: 9px; left: -1px; }
+#crosshair .l, #crosshair .r { width: 9px; height: 2px; top: -1px; }
+#crosshair .t { top: calc(-1 * var(--gap) - 9px); }
+#crosshair .b { top: var(--gap); }
+#crosshair .l { left: calc(-1 * var(--gap) - 9px); }
+#crosshair .r { left: var(--gap); }
+#crosshair .dot { width: 2px; height: 2px; left: -1px; top: -1px; }
+
+#hitmarker { position: absolute; left: 50%; top: 50%; opacity: 0; }
+#hitmarker i { position: absolute; width: 2px; height: 9px; background: #fff; left: -1px; top: -4.5px; box-shadow: 0 0 2px #000; }
+#hitmarker i:nth-child(1) { transform: rotate(45deg) translateY(-11px); }
+#hitmarker i:nth-child(2) { transform: rotate(135deg) translateY(-11px); }
+#hitmarker i:nth-child(3) { transform: rotate(225deg) translateY(-11px); }
+#hitmarker i:nth-child(4) { transform: rotate(315deg) translateY(-11px); }
+#hitmarker.show { animation: hm 0.28s ease-out forwards; }
+#hitmarker.head i { background: #ffd23a; }
+#hitmarker.armor i { background: #7cc4ff; }
+#hitmarker.kill i { background: #ff3b30; height: 13px; top: -6.5px; }
+#hitmarker.kill { animation: hm-kill 0.4s ease-out forwards; }
+#hitmarker.steel i { background: #e8e8e8; }
+@keyframes hm { 0% { opacity: 1; transform: scale(1.35); } 100% { opacity: 0; transform: scale(1); } }
+@keyframes hm-kill { 0% { opacity: 1; transform: scale(1.7) rotate(0deg); } 60% { opacity: 1; } 100% { opacity: 0; transform: scale(1.1) rotate(8deg); } }
+
+#readout { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); font-weight: 700; letter-spacing: 0.08em;
+  font-size: 15px; text-shadow: 0 1px 3px #000; opacity: 0; transition: opacity 0.25s; white-space: nowrap; }
+#readout.show { opacity: 1; }
+#readout.head { color: #ffd23a; }
+#readout.kill { color: #ff5a4a; }
+
+#hint { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); padding: 8px 16px; background: rgba(0, 0, 0, 0.5);
+  border-left: 3px solid var(--accent); font-size: 14px; opacity: 0; transition: opacity 0.3s; }
+#hint.show { opacity: 1; }
+
+#floaters .dmg { position: absolute; left: 0; top: 0; font-weight: 800; font-size: 17px; color: #fff; text-shadow: 0 1px 3px #000, 0 0 1px #000; }
+#floaters .dmg.head { color: #ffd23a; font-size: 20px; }
+
+/* Sniper scope: black surround, thin reticle with mil dots. */
+#scope { position: absolute; inset: 0; display: none; }
+#scope.show { display: block; }
+#scope .lens { position: absolute; left: 50%; top: 50%; width: min(96vh, 96vw); height: min(96vh, 96vw); transform: translate(-50%, -50%);
+  border-radius: 50%; box-shadow: 0 0 0 200vmax #000, inset 0 0 60px 30px rgba(0, 0, 0, 0.85); }
+/* Thin crosshairs that thicken into posts toward the edge, plus a few range ticks below centre. */
+#scope .h, #scope .v { position: absolute; }
+#scope .h { left: 0; right: 0; top: 50%; height: 3px; margin-top: -1.5px;
+  background: linear-gradient(90deg, #000 0 30%, transparent 30% 70%, #000 70%), linear-gradient(#000, #000) center / 100% 1px no-repeat; }
+#scope .v { top: 0; bottom: 0; left: 50%; width: 3px; margin-left: -1.5px;
+  background: linear-gradient(#000 0 30%, transparent 30% 70%, #000 70%), linear-gradient(#000, #000) center / 1px 100% no-repeat; }
+#scope .mil { position: absolute; left: 50%; top: 50%; width: 12px; height: 18%; margin-left: -6px;
+  background: repeating-linear-gradient(#000 0 1px, transparent 1px 16%); }
+
+#weapon-box { position: absolute; right: 32px; bottom: 28px; text-align: right; text-shadow: 0 1px 3px #000; }
+#gun-name { font-size: 13px; letter-spacing: 0.18em; color: var(--muted); font-weight: 600; }
+#ammo b { font-size: 44px; font-weight: 800; }
+#ammo b.low { color: #ff5a4a; }
+#ammo span { font-size: 20px; color: var(--muted); margin-left: 8px; }
+
+#move-box { position: absolute; left: 32px; bottom: 28px; text-shadow: 0 1px 3px #000; }
+#move { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#tac { --f: 1; width: 140px; height: 4px; background: rgba(255, 255, 255, 0.15); margin-bottom: 8px; transition: opacity 0.4s; }
+#tac i { display: block; height: 100%; width: calc(var(--f) * 100%); background: #9ad; }
+#tac.active i { background: var(--accent); }
+#tac.full { opacity: 0.25; }
+
+#fps { position: absolute; right: 12px; top: 10px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#help-hint { position: absolute; left: 12px; top: 10px; font-size: 12px; color: var(--muted); opacity: 0.7; }
+
+/* Menu */
+#menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 30% 20%, rgba(40, 46, 40, 0.55), rgba(8, 9, 10, 0.88)); z-index: 5; }
+#menu.hidden { display: none; }
+.panel { width: min(520px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line); padding: 28px 28px 22px;
+  backdrop-filter: blur(6px); max-height: calc(100vh - 32px); overflow: auto; }
+h1 { margin: 0; font-size: 46px; letter-spacing: 0.12em; font-weight: 900; }
+h1 span { color: var(--accent); }
+.sub { margin: 4px 0 20px; color: var(--muted); letter-spacing: 0.1em; font-size: 13px; text-transform: uppercase; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button.primary { width: 100%; padding: 14px; font-size: 20px; font-weight: 800; letter-spacing: 0.2em; background: var(--accent); color: #111;
+  border: 0; }
+button.primary:hover { filter: brightness(1.1); }
+.tabs { display: flex; gap: 4px; margin: 22px 0 12px; border-bottom: 1px solid var(--line); }
+.tabs button { background: none; border: 0; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent; }
+.tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.tab { display: none; }
+.tab.on { display: block; }
+label { display: block; font-size: 13px; margin: 12px 0; color: var(--muted); }
+label output { float: right; color: var(--text); font-variant-numeric: tabular-nums; }
+label input[type='range'] { width: 100%; accent-color: var(--accent); margin-top: 6px; }
+label.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+label.check { justify-content: flex-start; }
+select { font: inherit; background: #1b1e21; color: var(--text); border: 1px solid var(--line); padding: 6px; }
+.note { font-size: 12px; color: var(--accent); min-height: 1em; margin: 4px 0 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+td { padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td:first-child { color: var(--accent); white-space: nowrap; width: 110px; font-weight: 600; }
+
+#help { position: fixed; left: 12px; top: 32px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; display: none;
+  font-size: 13px; pointer-events: none; z-index: 4; max-width: 360px; }
+#help.show { display: block; }
+#help h3 { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.1em; color: var(--accent); }

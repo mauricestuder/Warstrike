@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Warstrike</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="hud">
+      <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
+      <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+      <div id="readout"></div>
+      <div id="hint"></div>
+      <div id="floaters"></div>
+      <div id="scope"><div class="lens"><i class="h"></i><i class="v"></i><i class="mil"></i></div></div>
+      <div id="weapon-box"><div id="gun-name"></div><div id="ammo"></div></div>
+      <div id="move-box"><div id="tac"><i></i></div><div id="move"></div></div>
+      <div id="fps"></div>
+      <div id="help-hint">H — controls</div>
+    </div>
+
+    <div id="menu">
+      <div class="panel">
+        <h1>WAR<span>STRIKE</span></h1>
+        <p class="sub">Gun range · build 0.1</p>
+        <button id="play" class="primary">PLAY</button>
+        <div class="tabs"><button data-tab="settings" class="on">Settings</button><button data-tab="controls">Controls</button></div>
+        <div id="tab-settings" class="tab on">
+          <label>Mouse sensitivity <output id="o-sens"></output><input id="s-sens" type="range" min="0.2" max="8" step="0.05" /></label>
+          <label>ADS sensitivity × <output id="o-ads"></output><input id="s-ads" type="range" min="0.3" max="1.5" step="0.05" /></label>
+          <label>Field of view <output id="o-fov"></output><input id="s-fov" type="range" min="70" max="120" step="1" /></label>
+          <label>Volume <output id="o-vol"></output><input id="s-vol" type="range" min="0" max="1" step="0.05" /></label>
+          <label class="row">Graphics
+            <select id="s-quality"><option value="high">High (shadow cascades, MSAA, 512 px textures)</option><option value="low">Low (faster)</option></select>
+          </label>
+          <label class="row check"><input id="s-fps" type="checkbox" /> Show FPS</label>
+          <p class="note" id="quality-note"></p>
+        </div>
+        <div id="tab-controls" class="tab">
+          <table>
+            <tr><td>WASD</td><td>Move</td></tr>
+            <tr><td>Shift</td><td>Sprint · double-tap for tactical sprint · hold while scoped to steady your aim</td></tr>
+            <tr><td>Space</td><td>Jump · jump into a ledge to mantle</td></tr>
+            <tr><td>C / Ctrl</td><td>Crouch (C toggles, Ctrl holds) · while sprinting: slide</td></tr>
+            <tr><td>Left mouse</td><td>Fire</td></tr>
+            <tr><td>Right mouse</td><td>Aim down sights</td></tr>
+            <tr><td>R</td><td>Reload</td></tr>
+            <tr><td>1 2 3 / wheel</td><td>Switch weapon</td></tr>
+            <tr><td>Y</td><td>Inspect weapon</td></tr>
+            <tr><td>Esc</td><td>Pause</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div id="help"><h3>Controls</h3><div id="help-body"></div></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
