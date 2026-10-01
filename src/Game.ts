@@ -42,6 +42,7 @@ export class Game {
   readonly log: { zone: Zone; dmg: number; dist: number; wallbang: boolean; steel: boolean }[] = [];
 
   constructor(public settings: Settings, readonly map: MapId) {
+    this.sfx.env = map === 'town' ? 'town' : 'range';
     this.renderer = new Renderer(settings.quality);
     this.input = new Input(this.renderer.gl.domElement);
     const w = this.world = map === 'town' ? new Town(this.renderer) : new Range(this.renderer);

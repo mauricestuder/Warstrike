@@ -33,6 +33,11 @@ npm run share      # → Warstrike.html (no server needed)
 
 **Range:** infinite reserve ammo.
 
+**Sound (0.2.1):** deeper, more realistic gunshots.
+- Every shot has four layers: a supersonic crack, the muzzle blast, a low boom and a chest-thump below it. Like a real recording, it's slightly clipped.
+- Each gun has four variants, so no two shots sound the same.
+- Shots echo through convolution reverb shaped by the map: rolling echoes off the berms on the range, and fast slap-back off the houses and containers in town.
+
 ## What's in build 0.1
 
 **Movement**
@@ -58,7 +63,7 @@ npm run share      # → Warstrike.html (no server needed)
 
 **Look and feel**
 - Physical sky with image-based lighting, cascaded shadow maps, procedural PBR textures, haze, bloom and ACES tone mapping.
-- Synthesized sound (no audio files): gunshots with echo, footsteps, hit and kill confirms.
+- Synthesized sound (no audio files): gunshots with echo, footsteps, hit and kill confirms. (Gunshots reworked in 0.2.1.)
 - Settings for sensitivity, ADS sensitivity, FOV, volume and graphics quality.
 
 ## Controls
