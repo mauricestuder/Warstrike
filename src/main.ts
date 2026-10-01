@@ -8,7 +8,7 @@ let game: Game | null = null;
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const menu = byId('menu'), play = byId<HTMLButtonElement>('play'), leave = byId<HTMLButtonElement>('leave');
 const maps = byId('maps'), sub = byId('sub');
-const MAP_NAMES: Record<MapId, string> = { range: 'Gun range', town: 'Harbor Outskirts' };
+const MAP_NAMES: Record<MapId, string> = { range: 'Gun range', town: 'Harbor Outskirts', br: 'Battle royale' };
 
 function resume() {
   if (!game) return;
@@ -28,9 +28,10 @@ function start(map: MapId) {
     play.classList.remove('hidden');
     leave.classList.remove('hidden');
     play.textContent = 'PLAY';
-    sub.textContent = `${MAP_NAMES[map]} · build 0.2`;
+    sub.textContent = `${MAP_NAMES[map]} · build 0.3`;
     game.renderer.gl.domElement.addEventListener('click', () => { if (game && !game.input.locked) resume(); });
-    resume();
+    // Grabbing the mouse needs a click; after "play again" the page loads without one, so wait for PLAY.
+    if (navigator.userActivation?.isActive ?? true) resume();
   }, 30);
 }
 
@@ -38,17 +39,23 @@ for (const b of maps.querySelectorAll<HTMLButtonElement>('button.map')) b.addEve
 play.addEventListener('click', resume);
 leave.addEventListener('click', () => location.reload());
 (window as unknown as { startMap: (m: MapId) => void }).startMap = start;
+// "Play again" after a match: rebuild the battle royale straight away (you still click PLAY to grab the mouse).
+if (sessionStorage.getItem('warstrike.autostart') === 'br') {
+  sessionStorage.removeItem('warstrike.autostart');
+  start('br');
+}
 
 document.addEventListener('pointerlockchange', () => {
   if (!game) return;
   const locked = document.pointerLockElement === game.renderer.gl.domElement;
-  game.running = locked;
+  game.running = locked && !game.over;
+  if (game.over) { menu.classList.add('hidden'); byId('end').classList.remove('hidden'); return; }
   menu.classList.toggle('hidden', locked);
   if (locked) {
     play.textContent = 'RESUME';
     const key = `warstrike.welcomed.${game.map}`;
     if (!sessionStorage.getItem(key)) {
-      game.hud.showHint(game.world.welcome, 7);
+      game.hud.showHint(game.welcome, 7);
       sessionStorage.setItem(key, '1');
     }
   }

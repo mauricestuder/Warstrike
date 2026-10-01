@@ -116,19 +116,19 @@ function renderShot(sp: ShotSpec, sr: number, seed: number): Float32Array {
  * first, then a diffuse tail that loses its highs over time, so the echo rolls away like distant thunder.
  */
 function renderImpulse(ctx: BaseAudioContext, env: SoundEnv): AudioBuffer {
-  const sr = ctx.sampleRate, len = env === 'town' ? 2.4 : 2.8;
+  const sr = ctx.sampleRate, len = env === 'town' ? 1.3 : 1.6;
   const n = Math.floor(len * sr), ir = ctx.createBuffer(2, n, sr);
   const reflections: [number, number][] = env === 'town'
     ? [[0.017, 0.55], [0.029, 0.42], [0.044, 0.38], [0.063, 0.3], [0.088, 0.26], [0.12, 0.2], [0.17, 0.16], [0.26, 0.12]]
-    : [[0.045, 0.18], [0.19, 0.42], [0.38, 0.16], [0.6, 0.08]];
-  const decay = env === 'town' ? 0.55 : 0.75;
+    : [[0.045, 0.18], [0.19, 0.42], [0.36, 0.12]];
+  const decay = env === 'town' ? 0.27 : 0.34;
   for (let ch = 0; ch < 2; ch++) {
     const d = ir.getChannelData(ch), r = rng(91 + ch * 17 + (env === 'town' ? 5 : 0));
     let lp = 0;
     for (let i = 0; i < n; i++) {
       const t = i / sr;
       // The tail darkens as it goes: a one-pole lowpass whose cutoff falls from ~5 kHz to ~250 Hz.
-      const fc = 250 + 4800 * Math.exp(-t / 0.18);
+      const fc = 350 + 4600 * Math.exp(-t / 0.15);
       const a = 1 - Math.exp(-2 * Math.PI * fc / sr);
       lp += a * (r() - lp);
       const onset = Math.min(1, t / 0.012);
@@ -194,7 +194,7 @@ export class Sfx {
     this.lowIn.type = 'lowpass';
     this.lowIn.frequency.value = 260;
     const lowGain = ctx.createGain();
-    lowGain.gain.value = 1.2;
+    lowGain.gain.value = 0.7;
     this.lowIn.connect(lowGain).connect(verb);
     const len = ctx.sampleRate * 2;
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -361,6 +361,148 @@ export class Sfx {
     const t = this.ctx!.currentTime + dist / SPEED_OF_SOUND;
     const v = Math.max(0.12, 0.6 - dist / 800);
     for (const [f, g] of [[1180, 1], [2710, 0.5], [4430, 0.3], [690, 0.4]] as const) this.tone(t, 0.9, f, f * 0.995, g * v * 0.35);
+  }
+
+  // ------------------------------------------------------------------ fists, loot and battle royale
+
+  punch() {
+    if (!this.ok) return;
+    this.burst(this.ctx!.currentTime, 0.16, 'bandpass', 900, 0.8, 0.22, 0.03, 2200); // whoosh
+  }
+
+  punchHit() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.burst(t, 0.08, 'lowpass', 700, 1, 0.7, 0.002);
+    this.tone(t, 0.1, 140, 60, 0.5);
+  }
+
+  pickup() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.burst(t, 0.05, 'bandpass', 2600, 4, 0.3);
+    this.burst(t + 0.07, 0.06, 'bandpass', 1500, 4, 0.35);
+  }
+
+  cash() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    for (const [d, f] of [[0, 2093], [0.06, 2637], [0.12, 3136]] as const) this.tone(t + d, 0.25, f, f, 0.1, 'triangle');
+    this.burst(t, 0.12, 'highpass', 5000, 0.7, 0.12);
+  }
+
+  plateStart() {
+    if (!this.ok) return;
+    this.burst(this.ctx!.currentTime + 0.1, 0.35, 'bandpass', 3000, 0.8, 0.25, 0.01, 1800); // velcro rip
+  }
+
+  plateIn() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.burst(t, 0.06, 'lowpass', 900, 1, 0.6, 0.002);
+    this.tone(t, 0.12, 320, 300, 0.12, 'triangle');
+  }
+
+  armorFull() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.tone(t, 0.15, 660, 660, 0.12, 'triangle');
+    this.tone(t + 0.1, 0.2, 990, 990, 0.12, 'triangle');
+  }
+
+  supplyOpen() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.burst(t, 0.4, 'bandpass', 500, 2, 0.35, 0.05, 900); // hinge creak
+    this.burst(t + 0.35, 0.08, 'lowpass', 600, 1, 0.5);
+    for (const [d, f] of [[0.4, 784], [0.5, 988], [0.6, 1175], [0.7, 1568]] as const) this.tone(t + d, 0.4, f, f, 0.08, 'triangle');
+  }
+
+  buy() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.tone(t, 0.08, 1200, 1200, 0.15, 'square');
+    this.tone(t + 0.08, 0.15, 1800, 1800, 0.12, 'square');
+  }
+
+  denied() {
+    if (!this.ok) return;
+    this.tone(this.ctx!.currentTime, 0.2, 220, 200, 0.15, 'square');
+  }
+
+  hurt() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.burst(t, 0.12, 'lowpass', 500, 1, 0.5, 0.003);
+    this.tone(t, 0.15, 90, 50, 0.35);
+  }
+
+  cough() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    for (const d of [0, 0.28]) this.burst(t + d, 0.18, 'bandpass', 700 + Math.random() * 300, 1.2, 0.3, 0.01, 400);
+  }
+
+  /** Klaxon when the gas starts moving in. */
+  gasAlarm() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    for (let i = 0; i < 3; i++) this.tone(t + i * 0.45, 0.35, 520, 440, 0.12, 'sawtooth');
+  }
+
+  chute() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.burst(t, 0.5, 'bandpass', 700, 0.7, 0.5, 0.02, 250); // canopy catching air
+    this.burst(t + 0.3, 0.12, 'lowpass', 300, 1, 0.5);
+  }
+
+  victory() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    const notes: [number, number[]][] = [[0, [523, 659, 784]], [0.3, [587, 740, 880]], [0.6, [659, 831, 988, 1319]]];
+    for (const [d, fs] of notes) for (const f of fs) this.tone(t + d, d > 0.5 ? 1.6 : 0.35, f, f, 0.07, 'triangle');
+  }
+
+  defeat() {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    for (const [d, f] of [[0, 392], [0.35, 330], [0.7, 262]] as const) this.tone(t + d, 0.6, f, f * 0.98, 0.09, 'triangle');
+  }
+
+  private loops = new Map<string, { gain: GainNode; filter: BiquadFilterNode }>();
+
+  /** Continuous sounds (wind, plane engines), faded by setting their level every frame. 0 = silent. */
+  loop(name: 'wind' | 'plane' | 'gas', level: number) {
+    if (!this.ok) return;
+    const ctx = this.ctx!;
+    let l = this.loops.get(name);
+    if (!l) {
+      if (level <= 0) return;
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      if (name === 'plane') {
+        // Engine drone: low noise plus a slightly beating pair of saws through a lowpass.
+        filter.type = 'lowpass'; filter.frequency.value = 400; filter.Q.value = 2;
+        for (const f of [58, 61.5, 116]) {
+          const o = ctx.createOscillator();
+          o.type = 'sawtooth'; o.frequency.value = f;
+          const og = ctx.createGain(); og.gain.value = 0.25;
+          o.connect(og).connect(filter); o.start();
+        }
+      } else if (name === 'gas') { filter.type = 'bandpass'; filter.frequency.value = 300; filter.Q.value = 0.8; }
+      else { filter.type = 'bandpass'; filter.frequency.value = 600; filter.Q.value = 0.5; }
+      src.connect(filter).connect(gain).connect(this.master);
+      src.start();
+      l = { gain, filter };
+      this.loops.set(name, l);
+    }
+    l.gain.gain.setTargetAtTime(Math.max(0, level), ctx.currentTime, 0.08);
+    if (name === 'wind') l.filter.frequency.setTargetAtTime(300 + level * 900, ctx.currentTime, 0.1);
   }
 
   breath(inhale: boolean) {

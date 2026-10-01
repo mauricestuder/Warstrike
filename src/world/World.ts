@@ -18,6 +18,12 @@ export interface World {
   readonly infiniteAmmo: boolean;
   /** Shown once when you first drop in. */
   readonly welcome: string;
+  /** Playable area (battle royale maps). */
+  readonly bounds?: { x0: number; x1: number; z0: number; z1: number };
+  /** Rough places for buy stations; the loot system finds open ground nearby. */
+  readonly stationAnchors?: [number, number][];
+  /** Prepares the scene for the top-down map capture (hides grass, which is only drawn near the player). */
+  mapView?(on: boolean): void;
   /** Per-frame animation and level-of-detail; `viewer` is the camera position. */
   update(dt: number, viewer: Vector3): void;
 }

@@ -1,7 +1,7 @@
 # WARSTRIKE
 
 A browser FPS built from scratch with **Three.js + TypeScript**, taking inspiration from Warzone's gunplay and Blood Strike's pace.
-The long-term goal is a battle royale. Build 0.2 has two maps: a **gun range** for dialling in movement and gunplay, and **Harbor Outskirts**, the first piece of the big map.
+The long-term goal is a big battle royale. Build 0.3 has a first **battle royale mode** on Harbor Outskirts, a **gun range** for dialling in movement and gunplay, and **free roam** on Harbor Outskirts.
 
 ## Play
 
@@ -16,7 +16,51 @@ Or build a single self-contained file you can double-click or send to a friend:
 npm run share      # → Warstrike.html (no server needed)
 ```
 
-## What's new in build 0.2
+## What's new in build 0.3
+
+**Battle royale** (menu → BATTLE ROYALE):
+- **Plane drop:** a transport plane crosses the map on a random line. Jump from the rear ramp with Space, or get thrown out at the far edge.
+  - **Freefall:** look down to dive faster; WASD steers.
+  - **Parachute:** opens by itself at 55 m, or press Space earlier.
+- **The gas:** five phases of closing circles (about 5½ minutes).
+  - The next circle shows on the minimap (dashed) and on the full map (**M**).
+  - Outside the circle you take damage that ignores armour, and it hurts more every phase.
+  - You see a churning yellow wall, yellow fog and a warning, and you cough.
+- **Health and armour:** 100 health that regenerates after 5 s without damage, plus three armour plates of 50 each.
+  - Carry up to 5 plates and press **4** to plate up; hold it to insert several.
+- **Loot:** about 120 items and 9 supply boxes, placed automatically on floors all over the map, mostly indoors.
+  - **Guns** float above the ground with a glow in their rarity colour: Common (grey), Uncommon (green), Rare (blue), Epic (purple) or Legendary (gold).
+    - Better rarity means more damage (up to +20%) and less recoil (down to −22%), and the gun's furniture takes the rarity colour.
+    - Legendary guns are gold.
+  - **Ammo boxes** for rifle, SMG and sniper rounds, **armour plates** and **cash** are picked up just by walking over them.
+  - **Supply boxes** (the gold beams) spill an Epic or Legendary gun, ammo, plates and cash.
+  - You carry two guns plus your fists. **F** picks up a gun, or swaps it for the one in your hand.
+- **Buy stations** (green $ on the map), where you spend the cash you collected:
+
+  | Item | Price |
+  | --- | --- |
+  | 3 plates | $800 |
+  | Full ammo | $600 |
+  | Random Epic gun | $2,500 |
+  | Random Legendary gun | $4,500 |
+
+- **12 bots** are spread around the map. They stay down when killed and drop cash, ammo, sometimes a plate or a gun. The gas takes them too.
+- **Last one standing wins.** The Victory or Eliminated screen shows your placement, kills, damage, time survived, cash, items looted and longest kill.
+- **HUD:**
+  - armour, health, plates and cash;
+  - players alive and kills;
+  - gas timer;
+  - kill feed;
+  - minimap (a real top-down render of the map) and the full map on **M**;
+  - pickup prompts.
+
+**Fists:** press **X** to put your gun away. You walk about 10% faster and sprint about 10% faster than with a rifle. Left click punches (34 damage, more to the head).
+
+**Movement:** about 10% faster overall. Walk 5.3, sprint 7.6, tactical sprint 9.3 m/s.
+
+**Sound:** the deep echo after each shot is much shorter.
+
+## What came in build 0.2
 
 **Harbor Outskirts**, the first chunk of the battle royale map (about 240 × 240 m), abandoned and overgrown:
 - **Maple Street:** five enterable houses (two with an upstairs), furnished rooms, porches you can climb onto, a burnt-out ruin, fences, yards, a snapped power pole across the road.
@@ -72,13 +116,17 @@ npm run share      # → Warstrike.html (no server needed)
 | --- | --- |
 | WASD | Move |
 | Shift | Sprint · double-tap: tactical sprint · scoped: hold breath |
-| Space | Jump / mantle |
+| Space | Jump / mantle · in the plane: jump · falling: open parachute |
 | C / Ctrl | Crouch (toggle / hold) · while sprinting: slide |
 | Left / right mouse | Fire / aim |
 | R | Reload |
 | 1 2 3 / wheel | Switch weapon |
+| X | Fists (run faster) · again: back to your gun |
+| F | Pick up · open supply box · buy station |
+| 4 | Plate up (hold for several) |
+| M | Full map |
 | Y | Inspect |
-| T | Refill ammo |
+| T | Refill ammo (range and free roam) |
 | H | Show controls |
 | Esc | Pause / settings |
 
@@ -91,6 +139,7 @@ src/
   render/            renderer + post, procedural textures, materials, effects (decals, tracers, particles)
   world/             box colliders, the World interface, the geometry Builder (merges static meshes), the range
   world/town/        Harbor Outskirts: materials, props, buildings, port, vegetation, layout
+  br/                battle royale: match flow, loot and buy stations, gas zone, drop plane, minimap
   player/            movement: sprint, crouch, slide, mantle
   weapons/           gun stats, firing, recoil, ballistics, first-person view models
   targets/           steel plates and bots

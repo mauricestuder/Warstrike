@@ -14,7 +14,15 @@
       <div id="hint"></div>
       <div id="floaters"></div>
       <div id="scope"><div class="lens"><i class="h"></i><i class="v"></i><i class="mil"></i></div></div>
-      <div id="weapon-box"><div id="gun-name"></div><div id="ammo"></div></div>
+      <div id="weapon-box"><div id="slots"></div><div id="gun-name"></div><div id="ammo"></div></div>
+      <div id="vitals"></div>
+      <div id="prompt"></div>
+      <div id="feed"></div>
+      <div id="zone"></div>
+      <div id="alive"></div>
+      <canvas id="minimap" width="200" height="200"></canvas>
+      <div id="hurt"></div>
+      <div id="gas"></div>
       <div id="move-box"><div id="tac"><i></i></div><div id="move"></div></div>
       <div id="fps"></div>
       <div id="help-hint">H — controls</div>
@@ -23,10 +31,11 @@
     <div id="menu">
       <div class="panel">
         <h1>WAR<span>STRIKE</span></h1>
-        <p class="sub" id="sub">Build 0.2 · choose a map</p>
+        <p class="sub" id="sub">Build 0.3 · choose a mode</p>
         <div id="maps">
+          <button class="map br" data-map="br"><b>BATTLE ROYALE</b><span>Drop from the plane into Harbor Outskirts · loot guns, plates and cash · outlast the gas and 12 bots</span></button>
           <button class="map" data-map="range"><b>GUN RANGE</b><span>Steel out to 300 m, strafing bots, wallbang lane, movement course · infinite ammo</span></button>
-          <button class="map" data-map="town"><b>HARBOR OUTSKIRTS</b><span>First piece of the big map: overgrown suburb, gas station, auto shop, port with containers and a crane · 12 bots</span></button>
+          <button class="map" data-map="town"><b>HARBOR OUTSKIRTS</b><span>Free roam: overgrown suburb, gas station, auto shop, port with containers and a crane · 12 bots · full loadout</span></button>
         </div>
         <button id="play" class="primary hidden">RESUME</button>
         <button id="leave" class="ghost hidden">Back to map select</button>
@@ -52,14 +61,22 @@
             <tr><td>Right mouse</td><td>Aim down sights</td></tr>
             <tr><td>R</td><td>Reload</td></tr>
             <tr><td>1 2 3 / wheel</td><td>Switch weapon</td></tr>
+            <tr><td>X</td><td>Fists (run faster) · press again for your gun</td></tr>
+            <tr><td>F</td><td>Pick up · open supply box · buy station</td></tr>
+            <tr><td>4</td><td>Plate up (hold to insert several)</td></tr>
+            <tr><td>M</td><td>Map</td></tr>
+            <tr><td>Space</td><td>In the plane: jump · falling: open parachute</td></tr>
             <tr><td>Y</td><td>Inspect weapon</td></tr>
-            <tr><td>T</td><td>Refill ammo</td></tr>
+            <tr><td>T</td><td>Refill ammo (range and free roam)</td></tr>
             <tr><td>Esc</td><td>Pause</td></tr>
           </table>
         </div>
       </div>
     </div>
     <div id="help"><h3>Controls</h3><div id="help-body"></div></div>
+    <div id="bigmap" class="hidden"><canvas width="720" height="720"></canvas><p>M — close map</p></div>
+    <div id="shop" class="hidden"></div>
+    <div id="end" class="hidden"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

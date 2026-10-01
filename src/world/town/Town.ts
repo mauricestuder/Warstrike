@@ -37,6 +37,9 @@ export class Town implements World {
   readonly infiniteAmmo = false;
   readonly welcome = 'Harbor Outskirts · suburb, gas station and port · 12 bots are hiding around the map · T refills ammo';
   readonly colliders;
+  readonly bounds = { x0: X0 + 2, x1: X1 - 2, z0: Z0 + 3, z1: Z1 - 2 };
+  /** Gas station forecourt, Maple Street, the port gate, the east field. */
+  readonly stationAnchors: [number, number][] = [[14, 4], [-42, 27], [-14, -70], [44, 62]];
   private b = new Builder();
   private m: TownMaterials;
   private rnd = mulberry32(2026);
@@ -71,6 +74,10 @@ export class Town implements World {
   }
 
   private grassFar = 90;
+
+  mapView(on: boolean) {
+    for (const c of this.grassCells) c.visible = !on;
+  }
 
   update(dt: number, viewer: Vector3) {
     WIND.value += dt;

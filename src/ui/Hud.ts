@@ -21,6 +21,16 @@ export class Hud {
   private scope = $('scope');
   private fps = $('fps');
   private hint = $('hint');
+  private slotsEl = $('slots');
+  private vitalsEl = $('vitals');
+  private promptEl = $('prompt');
+  private feedEl = $('feed');
+  private zoneEl = $('zone');
+  private aliveEl = $('alive');
+  private hurtEl = $('hurt');
+  private gasEl = $('gas');
+  private prompt = '';
+  private lastVitals = '';
   private gap = 20;
   private floaters: Floater[] = [];
   private readoutT = 0;
@@ -66,10 +76,71 @@ export class Hud {
     this.hintT = time;
   }
 
-  setGun(name: string) { this.gunName.textContent = name; }
+  setGun(name: string, rarity: { name: string; color: string } | null) {
+    this.gunName.innerHTML = rarity ? `<i style="color:${rarity.color}">${rarity.name.toUpperCase()}</i> ${name}` : name;
+  }
 
+  /** `mag` < 0 hides the counter (fists). */
   setAmmo(mag: number, reserve: number, magSize: number) {
+    if (mag < 0) { this.ammo.innerHTML = '<span class="melee">LMB punch · X back to gun</span>'; return; }
     this.ammo.innerHTML = `<b class="${mag <= magSize * 0.25 ? 'low' : ''}">${mag}</b><span>${reserve === Infinity ? '∞' : reserve}</span>`;
+  }
+
+  setSlots(slots: ({ name: string; color: string } | null)[], active: number) {
+    const chips = slots.map((s, i) => `<div class="slot${i === active ? ' on' : ''}" style="--c:${s ? s.color : 'transparent'}"><u>${i + 1}</u>${s ? s.name : 'EMPTY'}</div>`);
+    chips.push(`<div class="slot${active < 0 ? ' on' : ''}" style="--c:#888"><u>X</u>FISTS</div>`);
+    this.slotsEl.innerHTML = chips.join('');
+  }
+
+  /** Battle royale vitals: three armour plate segments over the health bar, plates carried and cash. */
+  setVitals(hp: number, armor: number, plates: number, cash: number) {
+    const key = `${Math.ceil(hp)}|${Math.ceil(armor)}|${plates}|${cash}`;
+    if (key === this.lastVitals) return;
+    this.lastVitals = key;
+    const segs = [0, 1, 2].map((i) => `<i style="--f:${Math.max(0, Math.min(1, (armor - i * 50) / 50)).toFixed(3)}"></i>`).join('');
+    this.vitalsEl.innerHTML = `<div class="plates">${segs}</div><div class="hp${hp < 35 ? ' low' : ''}"><i style="--f:${(hp / 100).toFixed(3)}"></i></div>`
+      + `<div class="inv"><span class="pl">▣ ${plates}<small> plates · 4</small></span><span class="cash">$${cash.toLocaleString('en-US')}</span></div>`;
+  }
+
+  setPrompt(text: string | null) {
+    const t = text ?? '';
+    if (t === this.prompt) return;
+    this.prompt = t;
+    this.promptEl.innerHTML = t;
+    this.promptEl.classList.toggle('show', !!t);
+  }
+
+  feed(html: string) {
+    const el = document.createElement('div');
+    el.innerHTML = html;
+    this.feedEl.prepend(el);
+    setTimeout(() => el.classList.add('out'), 5000);
+    setTimeout(() => el.remove(), 5600);
+    while (this.feedEl.children.length > 5) this.feedEl.lastElementChild!.remove();
+  }
+
+  setZone(html: string, urgent: boolean) {
+    if (this.zoneEl.innerHTML !== html) this.zoneEl.innerHTML = html;
+    this.zoneEl.classList.toggle('urgent', urgent);
+  }
+
+  setAlive(alive: number, kills: number) {
+    const t = `<b>${alive}</b> ALIVE<span>${kills} KILLS</span>`;
+    if (this.aliveEl.innerHTML !== t) this.aliveEl.innerHTML = t;
+  }
+
+  hurt() {
+    this.hurtEl.classList.remove('show');
+    void this.hurtEl.offsetWidth;
+    this.hurtEl.classList.add('show');
+  }
+
+  /** 0..1 how deep in the gas you are. */
+  setGas(k: number) { this.gasEl.style.opacity = k.toFixed(2); }
+
+  /** Battle royale HUD on/off; the range HUD keeps the movement readout instead. */
+  setMode(br: boolean) {
+    document.body.classList.toggle('br', br);
   }
 
   setMove(speed: number, stance: string, lastSlide: number) {

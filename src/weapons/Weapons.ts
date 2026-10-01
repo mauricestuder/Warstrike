@@ -6,10 +6,10 @@ import type { Player } from '../player/Player';
 import type { Effects } from '../render/Effects';
 import type { Hud } from '../ui/Hud';
 import type { Ballistics } from './Ballistics';
-import { GUNS, LOADOUT, type GunDef } from './defs';
+import { AMMO_MAX, GUNS, HANDS, LOADOUT, RARITY, rarityDef, type AmmoType, type GunDef, type GunId, type Rarity } from './defs';
 import type { ViewModel } from './ViewModel';
 
-interface GunState { def: GunDef; mag: number; reserve: number; }
+export interface GunState { def: GunDef; base: GunId | 'hands'; rarity: Rarity; mag: number; }
 
 /** Recovery starts this long after the last shot and closes the gap at RECOVER_RATE × remaining per second. */
 const RECOVER_DELAY = 0.12, RECOVER_RATE = 7;
@@ -21,8 +21,27 @@ const BREATH_HOLD = 4, BREATH_WINDED = 2.5;
  * inspect, and scope sway with hold-breath on the sniper.
  */
 export class Weapons {
-  private guns: GunState[];
-  private idx = 0;
+  /** Gun slots (keys 1, 2, …). Empty slots are null. Hands are always available on X. */
+  readonly slots: (GunState | null)[];
+  private hands: GunState = { def: HANDS, base: 'hands', rarity: 0, mag: 0 };
+  private cur: GunState;
+  private lastGun = 0;
+  /** Shared ammo pools by type. */
+  readonly ammo: Record<AmmoType, number> = { rifle: 0, smg: 0, sniper: 0 };
+  /** Set by the game: no firing or switching (in the plane, falling, plating, shop open). */
+  blocked = false;
+  /** 0..1 lowered gun (plating, shop). */
+  lower = 0;
+  /** Plate insert progress for the view model, or -1. */
+  plateT = -1;
+  chute = false;
+  /** Camera pitch, so the parachute stays overhead in the view model scene. */
+  pitch = 0;
+  hidden = false;
+  /** Punch hit test, wired up by the game. Returns true if something was hit. */
+  melee: (dir: Vector3) => boolean = () => false;
+  private punchCd = 0;
+  private punchPending = -1;
   ads = 0;
   private cooldown = 0;
   private sprayIdx = 0;
@@ -58,17 +77,30 @@ export class Weapons {
 
   constructor(private player: Player, private vm: ViewModel, private ballistics: Ballistics, private sfx: Sfx,
     private hud: Hud, private fx: Effects) {
-    this.guns = LOADOUT.map((id) => ({ def: GUNS[id], mag: GUNS[id].mag, reserve: GUNS[id].reserve }));
-    this.select(0, true);
+    this.slots = LOADOUT.map((id) => ({ def: GUNS[id], base: id, rarity: 0 as Rarity, mag: GUNS[id].mag }));
+    this.cur = this.slots[0]!;
+    this.select(this.cur, true);
   }
 
-  get def() { return this.guns[this.idx].def; }
+  /** Battle royale: start with empty pockets and two empty slots. */
+  emptyHanded() {
+    this.slots.length = 0;
+    this.slots.push(null, null);
+    for (const k of Object.keys(this.ammo) as AmmoType[]) this.ammo[k] = 0;
+    this.select(this.hands, true);
+  }
+
+  get def() { return this.cur.def; }
+  get current() { return this.cur; }
+  get onHands() { return this.cur === this.hands; }
   get reloading() { return this.reloadT >= 0; }
   get scoped() { return this.def.scope && this.ads > 0.92; }
 
-  private select(i: number, instant = false) {
-    if (i === this.idx && !instant) return;
-    this.idx = i;
+  private select(g: GunState, instant = false) {
+    if (g === this.cur && !instant) return;
+    this.cur = g;
+    const si = this.slots.indexOf(g);
+    if (si >= 0) this.lastGun = si;
     this.reloadT = -1;
     this.inspectT = -1;
     this.drawT = instant ? 1 : 0;
@@ -76,25 +108,59 @@ export class Weapons {
     this.bloom = 0;
     this.queued = false;
     this.vm.select(this.def.id);
-    this.hud.setGun(this.def.name);
+    if (g.base !== 'hands') this.vm.setRarity(g.base, RARITY[g.rarity].color, g.rarity === 4);
     if (!instant) this.sfx.swap();
     this.syncAmmo();
   }
 
-  private syncAmmo() {
-    const g = this.guns[this.idx];
-    this.hud.setAmmo(g.mag, this.infiniteReserve ? Infinity : g.reserve, g.def.mag);
+  /** Pushes weapon name, rarity, ammo and slots to the HUD. */
+  syncAmmo() {
+    const g = this.cur;
+    this.hud.setGun(g.def.name, g.base === 'hands' ? null : RARITY[g.rarity]);
+    if (g.base === 'hands') this.hud.setAmmo(-1, 0, 0);
+    else this.hud.setAmmo(g.mag, this.infiniteReserve ? Infinity : this.ammo[g.def.ammo], g.def.mag);
+    this.hud.setSlots(this.slots.map((s) => s && { name: s.def.name, color: RARITY[s.rarity].color }), this.slots.indexOf(g));
   }
 
   /** Refill everything (range convenience). */
   refill() {
-    for (const g of this.guns) { g.mag = g.def.mag; g.reserve = g.def.reserve; }
+    for (const g of this.slots) if (g) g.mag = g.def.mag;
+    for (const k of Object.keys(this.ammo) as AmmoType[]) this.ammo[k] = AMMO_MAX[k];
     this.syncAmmo();
   }
 
+  /** Adds ammo up to the carry limit; returns how much was taken. */
+  addAmmo(type: AmmoType, n: number) {
+    const take = Math.min(n, AMMO_MAX[type] - this.ammo[type]);
+    this.ammo[type] += take;
+    this.syncAmmo();
+    return take;
+  }
+
+  /**
+   * Picks up a gun: into an empty slot if there is one, otherwise it replaces the gun in hand (or slot 1 when on
+   * fists). Returns the gun that was dropped, if any.
+   */
+  give(id: GunId, rarity: Rarity, mag: number): GunState | null {
+    const g: GunState = { def: rarityDef(id, rarity), base: id, rarity, mag };
+    let i = this.slots.indexOf(null);
+    let dropped: GunState | null = null;
+    if (i < 0) {
+      i = this.onHands ? this.lastGun : this.slots.indexOf(this.cur);
+      dropped = this.slots[i];
+    }
+    this.slots[i] = g;
+    this.select(g, false);
+    return dropped;
+  }
+
+  /** Same gun type already held: lets the loot system show "swap" vs "pick up". */
+  get full() { return !this.slots.includes(null); }
+
   private startReload() {
-    const g = this.guns[this.idx];
-    if (this.reloading || g.mag >= g.def.mag || (g.reserve <= 0 && !this.infiniteReserve)) return;
+    const g = this.cur;
+    if (g.base === 'hands') return;
+    if (this.reloading || g.mag >= g.def.mag || (this.ammo[g.def.ammo] <= 0 && !this.infiniteReserve)) return;
     this.reloadEmpty = g.mag === 0;
     this.reloadDur = this.reloadEmpty ? g.def.reloadEmpty : g.def.reload;
     this.reloadT = 0;
@@ -104,42 +170,57 @@ export class Weapons {
 
   update(dt: number, input: Input, camera: PerspectiveCamera) {
     this.time += dt;
-    const g = this.guns[this.idx], d = g.def, p = this.player;
+    const p = this.player;
 
     // --- Switching, inspect, reload ---
-    for (let i = 0; i < this.guns.length; i++) if (input.wasPressed(`Digit${i + 1}`)) this.select(i);
-    if (input.wheel) this.select((this.idx + (input.wheel > 0 ? 1 : this.guns.length - 1)) % this.guns.length);
-    if (input.wasPressed('KeyR')) this.startReload();
-    if (input.wasPressed('KeyY') && !this.reloading && this.ads < 0.1) { this.inspectT = 0; this.sfx.inspect(); }
+    if (!this.blocked) {
+      for (let i = 0; i < this.slots.length; i++) {
+        const s = this.slots[i];
+        if (s && input.wasPressed(`Digit${i + 1}`)) this.select(s);
+      }
+      if (input.wasPressed('KeyX')) {
+        const back = this.slots[this.lastGun] ?? this.slots.find((s) => s);
+        this.select(this.onHands && back ? back : this.hands);
+      }
+      if (input.wheel) {
+        const ring = [...this.slots.filter((s): s is GunState => !!s), this.hands];
+        const i = ring.indexOf(this.cur);
+        this.select(ring[(i + (input.wheel > 0 ? 1 : ring.length - 1)) % ring.length]);
+      }
+      if (input.wasPressed('KeyR')) this.startReload();
+      if (input.wasPressed('KeyY') && !this.reloading && this.ads < 0.1 && !this.onHands) { this.inspectT = 0; this.sfx.inspect(); }
+    }
+    const g = this.cur, d = g.def;
     if (this.drawT < 1) this.drawT = Math.min(1, this.drawT + dt / d.drawTime);
     if (this.reloading) {
       this.reloadT += dt;
       if (this.reloadT >= this.reloadDur) {
-        const take = this.infiniteReserve ? d.mag - g.mag : Math.min(d.mag - g.mag, g.reserve);
+        const take = this.infiniteReserve ? d.mag - g.mag : Math.min(d.mag - g.mag, this.ammo[d.ammo]);
         g.mag += take;
-        if (!this.infiniteReserve) g.reserve -= take;
+        if (!this.infiniteReserve) this.ammo[d.ammo] -= take;
         this.reloadT = -1;
         this.syncAmmo();
       }
     }
 
     // --- Aim and sprint interplay ---
-    const wantAds = input.isDown('Mouse2');
-    const trigger = d.auto ? input.isDown('Mouse0') : input.wasPressed('Mouse0');
+    const wantAds = input.isDown('Mouse2') && !this.onHands && !this.blocked;
+    const trigger = !this.blocked && (d.auto ? input.isDown('Mouse0') : input.wasPressed('Mouse0'));
     if (!d.auto && trigger) { this.queued = true; this.queuedAt = this.time; }
-    p.sprintBlocked = wantAds || input.isDown('Mouse0') || this.queued;
+    p.sprintBlocked = wantAds || (input.isDown('Mouse0') && !this.onHands) || this.queued;
     if (p.sprinting) this.sprintOut = d.sprintToFire;
     else this.sprintOut = Math.max(0, this.sprintOut - dt);
     const canAds = wantAds && !p.sprinting && this.drawT > 0.3;
     this.ads = clamp(this.ads + (canAds ? 1 : -1.4) * (dt / d.adsTime), 0, 1);
     p.speedMul = d.moveMult * lerp(1, 0.62, this.ads);
+    p.sprintMul = d.sprintMult;
     if (this.inspectT >= 0) {
       this.inspectT += dt / 3;
       if (this.inspectT >= 1 || wantAds || p.sprinting || input.isDown('Mouse0')) this.inspectT = -1;
     }
 
     // --- Spread ---
-    const moveK = clamp(p.horizSpeed / 6.9, 0, 1.2);
+    const moveK = clamp(p.horizSpeed / 7.6, 0, 1.2);
     const air = p.onGround ? 0 : 1;
     const hipK = 1 - this.ads;
     this.bloom = Math.max(0, this.bloom - dt * d.bloomMax * 2.2 * (this.time - this.lastShot > 0.15 ? 1.6 : 0.3));
@@ -147,10 +228,26 @@ export class Weapons {
       + this.bloom * hipK + air * d.hipSpread * 0.8 + (p.stance === 'slide' ? d.hipSpread * 0.4 : 0)
       - (p.stance === 'crouch' && !p.moving ? d.hipSpread * 0.2 * hipK : 0);
 
+    // --- Punching ---
+    if (this.onHands) {
+      this.queued = false;
+      this.punchCd = Math.max(0, this.punchCd - dt);
+      if (trigger && this.punchCd <= 0 && this.drawT >= 1 && !p.mantling) {
+        this.punchCd = 60 / HANDS.rpm;
+        this.vm.punch();
+        this.sfx.punch();
+        this.punchPending = 0.11; // the fist lands a beat after the swing starts
+        p.sprinting = false;
+      }
+      if (this.punchPending >= 0 && (this.punchPending -= dt) < 0) {
+        if (this.melee(camera.getWorldDirection(this.tmpDir))) this.sfx.punchHit();
+      }
+    }
+
     // --- Firing ---
     this.cooldown = Math.max(0, this.cooldown - dt);
     const wantsFire = d.auto ? trigger : this.queued;
-    const ready = !this.reloading && this.drawT >= 1 && this.sprintOut <= 0 && !p.mantling;
+    const ready = !this.reloading && this.drawT >= 1 && this.sprintOut <= 0 && !p.mantling && !this.onHands && this.lower < 0.05;
     if (wantsFire && ready && this.cooldown <= 0) {
       if (g.mag > 0) {
         this.fire(g, camera);
@@ -183,7 +280,8 @@ export class Weapons {
     this.vm.update(dt, {
       ads: this.ads, sprint: p.sprinting ? 1 : 0, crouch: p.stance === 'crouch' ? 1 : 0, slide: p.slideT, speed: p.horizSpeed,
       grounded: p.onGround, reload: this.reloading ? this.reloadT / this.reloadDur : -1, reloadEmpty: this.reloadEmpty,
-      draw: this.drawT, inspect: this.inspectT, hidden: this.scoped,
+      draw: this.drawT, inspect: this.inspectT, hidden: this.scoped || this.hidden, lower: this.lower, plate: this.plateT,
+      chute: this.chute, pitch: this.pitch,
     }, input.mouseDX, input.mouseDY);
   }
 
@@ -206,7 +304,7 @@ export class Weapons {
     camera.localToWorld(muzzle);
     this.ballistics.fire(camera.position, dir, d, muzzle);
     this.fx.muzzle(muzzle);
-    this.sfx.shot(d.id);
+    this.sfx.shot(g.base as GunId);
 
     // Recoil: follow the gun's pattern, then loop its last third.
     const pat = d.pattern;
@@ -225,7 +323,7 @@ export class Weapons {
     const heavy = d.id === 'sniper';
     this.vm.kick((heavy ? 0.16 : 0.035) * (1 - this.ads * 0.5), heavy ? 1.6 : 0.55, (Math.random() - 0.5) * 0.04);
     this.syncAmmo();
-    if (g.mag === 0 && (g.reserve > 0 || this.infiniteReserve)) setTimeout(() => { if (this.guns[this.idx] === g && g.mag === 0) this.startReload(); }, 250);
+    if (g.mag === 0 && (this.ammo[d.ammo] > 0 || this.infiniteReserve)) setTimeout(() => { if (this.cur === g && g.mag === 0) this.startReload(); }, 250);
   }
 
   /** Scoped sway: slow figure-eight. Shift steadies it for a few seconds, then you're winded. */

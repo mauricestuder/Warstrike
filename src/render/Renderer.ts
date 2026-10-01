@@ -143,6 +143,14 @@ export class Renderer {
     this.csm?.updateFrustums();
   }
 
+  /** A larger near plane up in the air keeps distant ground layers from z-fighting. */
+  setNear(n: number) {
+    if (Math.abs(this.camera.near - n) < 1e-3) return;
+    this.camera.near = n;
+    this.camera.updateProjectionMatrix();
+    this.csm?.updateFrustums();
+  }
+
   resize() {
     const w = innerWidth, h = innerHeight;
     this.gl.setSize(w, h);

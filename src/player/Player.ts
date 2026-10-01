@@ -4,10 +4,10 @@ import { clamp, damp } from '../core/math';
 import type { Colliders } from '../world/Colliders';
 
 // All speeds in m/s, accelerations in m/s².
-const WALK = 4.8, SPRINT = 6.9, TAC_SPRINT = 8.4, CROUCH = 2.7;
-const GROUND_ACCEL = 55, AIR_ACCEL = 9, FRICTION = 9;
+const WALK = 5.3, SPRINT = 7.6, TAC_SPRINT = 9.3, CROUCH = 3.0;
+const GROUND_ACCEL = 60, AIR_ACCEL = 9, FRICTION = 9;
 const GRAVITY = 17, JUMP_VEL = 5.5;
-const SLIDE_MIN_ENTRY = 5.4, SLIDE_BOOST = 2.3, SLIDE_MAX = 10.8, SLIDE_DECEL = 5.2, SLIDE_END = 3.6, SLIDE_TIME = 1.15;
+const SLIDE_MIN_ENTRY = 5.9, SLIDE_BOOST = 2.4, SLIDE_MAX = 11.8, SLIDE_DECEL = 5.2, SLIDE_END = 3.6, SLIDE_TIME = 1.15;
 const SLIDE_COOLDOWN = 0.55;
 const TAC_TIME = 3.2, TAC_RECHARGE = 5;
 const RADIUS = 0.3, STAND_H = 1.8, CROUCH_H = 1.15, SLIDE_H = 0.95;
@@ -16,6 +16,11 @@ const EYE_STAND = 1.64, EYE_CROUCH = 1.08, EYE_SLIDE = 0.82;
 const SUBSTEP = 1 / 120;
 
 export type Stance = 'stand' | 'crouch' | 'slide';
+/** Dropping from the plane: freefall first, then the parachute. */
+export type Skydive = 'none' | 'freefall' | 'chute';
+
+// Skydiving: terminal speeds (m/s) and the height above ground the chute opens by itself.
+const FREEFALL_FALL = 34, FREEFALL_DIVE = 58, FREEFALL_AIR = 15, CHUTE_FALL = 6, CHUTE_AIR = 10.5, AUTO_CHUTE = 55, MIN_CHUTE = 10;
 
 export interface PlayerEvents {
   step(sprinting: boolean): void;
@@ -23,6 +28,7 @@ export interface PlayerEvents {
   land(impact: number): void;
   slide(): void;
   mantle(height: number): void;
+  chute?(): void;
 }
 
 /**
@@ -43,6 +49,13 @@ export class Player {
   sprintBlocked = false;
   /** Set by the weapon: speed multiplier for the gun in hand and ADS. */
   speedMul = 1;
+  /** Set by the weapon: sprint speed multiplier (fists are fastest). */
+  sprintMul = 1;
+  skydive: Skydive = 'none';
+  /** Playable area: while skydiving you can't drift past it. */
+  area: { x0: number; x1: number; z0: number; z1: number } | null = null;
+  /** Height above whatever is below you (updated while skydiving). */
+  altitude = 0;
   /** Smoothed eye height for the camera. */
   eye = EYE_STAND;
   /** 0..1 how far into a slide we are (camera tilt). */
@@ -73,6 +86,7 @@ export class Player {
     this.pitch = 0;
     this.stance = 'stand';
     this.mantling = false;
+    this.skydive = 'none';
   }
 
   get height() { return this.stance === 'stand' ? STAND_H : this.stance === 'crouch' ? CROUCH_H : SLIDE_H; }
@@ -82,6 +96,7 @@ export class Player {
 
   update(dt: number, input: Input) {
     this.time += dt;
+    if (this.skydive !== 'none') { this.updateSky(dt, input); return; }
     const fwdIn = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
     const sideIn = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
 
@@ -139,7 +154,7 @@ export class Player {
     this.stance = 'slide';
     this.sprinting = this.tacSprinting = false;
     this.crouchToggle = false;
-    const s = this.horizSpeed, k = Math.min(SLIDE_MAX, Math.max(s + SLIDE_BOOST, 8.8)) / Math.max(s, 1e-3);
+    const s = this.horizSpeed, k = Math.min(SLIDE_MAX, Math.max(s + SLIDE_BOOST, 9.6)) / Math.max(s, 1e-3);
     this.vel.x *= k;
     this.vel.z *= k;
     this.slideTime = 0;
@@ -184,7 +199,7 @@ export class Player {
     }
 
     let speed = this.stance === 'crouch' ? CROUCH : this.tacSprinting ? TAC_SPRINT : this.sprinting ? SPRINT : WALK;
-    if (!this.sprinting) speed *= this.speedMul;
+    speed *= this.sprinting ? this.sprintMul : this.speedMul;
     if (fwdIn < 0) speed *= 0.85; // backpedal slower
     const tx = wx * speed, tz = wz * speed;
     if (this.onGround) {
@@ -202,9 +217,60 @@ export class Player {
     }
   }
 
-  private physics(dt: number) {
+  /** Freefall (look down to dive faster) and parachute glide. Lands into normal movement on touchdown. */
+  private updateSky(dt: number, input: Input) {
+    const fwdIn = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
+    const sideIn = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
+    const ground = this.world.groundBelow(this.pos.x, this.pos.z, RADIUS, this.pos.y + 0.01);
+    this.altitude = this.pos.y - (ground === -Infinity ? 0 : ground);
+    const free = this.skydive === 'freefall';
+    if (free && (this.altitude < AUTO_CHUTE || (input.wasPressed('Space') && this.altitude > MIN_CHUTE))) {
+      this.skydive = 'chute';
+      this.events.chute?.();
+    }
+    const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
+    let wx = -sin * fwdIn + cos * sideIn, wz = -cos * fwdIn - sin * sideIn;
+    const wl = Math.hypot(wx, wz);
+    if (wl > 0) { wx /= wl; wz /= wl; }
+    let fall: number, air: number;
+    if (this.skydive === 'freefall') {
+      // Pitching down trades glide for speed, like a real skydiver tucking in.
+      const dive = clamp(-this.pitch / 1.2, 0, 1);
+      fall = FREEFALL_FALL + (FREEFALL_DIVE - FREEFALL_FALL) * dive * (fwdIn > 0 ? 1 : 0.6);
+      air = FREEFALL_AIR * (1 - dive * 0.35);
+    } else {
+      fall = CHUTE_FALL * (fwdIn > 0 ? 1.25 : fwdIn < 0 ? 0.8 : 1);
+      air = CHUTE_AIR;
+    }
+    // Vertical: accelerate toward the terminal speed (a chute opening brakes hard).
+    this.vel.y = this.vel.y < -fall ? damp(this.vel.y, -fall, 2.5, dt) : Math.max(-fall, this.vel.y - GRAVITY * dt);
+    const tx = wx * air, tz = wz * air, k = 1 - Math.exp(-dt * (wl > 0 ? 1.4 : 0.7));
+    this.vel.x += (tx - this.vel.x) * k;
+    this.vel.z += (tz - this.vel.z) * k;
+    this.onGround = false;
+    let t = dt;
+    while (t > 1e-6) {
+      const h = Math.min(SUBSTEP, t);
+      this.physics(h, false);
+      t -= h;
+      if (this.onGround) break;
+    }
+    if (this.area) {
+      const b = this.area;
+      if (this.pos.x < b.x0 || this.pos.x > b.x1) { this.pos.x = clamp(this.pos.x, b.x0, b.x1); this.vel.x = 0; }
+      if (this.pos.z < b.z0 || this.pos.z > b.z1) { this.pos.z = clamp(this.pos.z, b.z0, b.z1); this.vel.z = 0; }
+    }
+    this.stance = 'stand';
+    this.eye = EYE_STAND;
+    if (this.onGround) {
+      this.skydive = 'none';
+      this.vel.x *= 0.3; this.vel.z *= 0.3;
+    }
+  }
+
+  private physics(dt: number, gravity = true) {
     const wasGround = this.onGround;
-    this.vel.y -= GRAVITY * dt;
+    if (gravity) this.vel.y -= GRAVITY * dt;
     this.moveAxis(0, this.vel.x * dt);
     this.moveAxis(2, this.vel.z * dt);
     const vy = this.vel.y;

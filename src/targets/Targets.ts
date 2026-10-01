@@ -100,8 +100,11 @@ const MAX_HP = 100, MAX_ARMOR = 50;
  * A training bot: a soldier-shaped dummy with head / body / limb hitboxes, 100 HP + 50 armour.
  * Lane bots strafe with random ADAD timing; wall dummies stand still.
  */
-class Bot implements Target {
+export class Bot implements Target {
   readonly position = new Vector3();
+  /** Battle royale: bots stay down when killed. */
+  respawn = true;
+  name = 'Bot';
   private root = new Group();
   private body = new Group();
   private hp = MAX_HP;
@@ -193,7 +196,20 @@ class Bot implements Target {
     return best;
   }
 
+  get alive() { return this.dead <= 0 && this.hp > 0; }
+
+  /** Gas ignores armour. */
+  gas(amount: number): boolean {
+    if (!this.alive) return false;
+    this.hp -= amount;
+    this.flash = 0.06;
+    if (this.hp <= 0) { this.hp = 0; this.dead = 3; this.drawBar(); return true; }
+    this.drawBar();
+    return false;
+  }
+
   damage(amount: number): DamageResult {
+    if (!this.alive) return { dealt: 0, killed: false, armorBroke: false, steel: false };
     let left = amount, armorBroke = false;
     if (this.armor > 0) {
       const a = Math.min(this.armor, left);
@@ -211,6 +227,13 @@ class Bot implements Target {
   }
 
   update(dt: number, viewer: Vector3) {
+    if (this.hp <= 0 && !this.respawn) {
+      // Stays where it fell.
+      this.body.rotation.x = Math.max(this.body.rotation.x - dt * 5, -Math.PI / 2);
+      this.bar.visible = false;
+      for (const m of this.mats) m.emissive.setRGB(0, 0, 0);
+      return;
+    }
     if (this.dead > 0) {
       this.dead -= dt;
       // Topple backwards, then respawn.
@@ -248,16 +271,22 @@ class Bot implements Target {
 
 type THREE_Geo = ConstructorParameters<typeof Mesh>[0];
 
+const NAMES = ['Kowalski', 'Ghost_77', 'Reyes', 'NightOwl', 'Viktor', 'Hawk', 'Mendez', 'Sly', 'Bravo-6', 'Tanaka', 'Rook',
+  'Okafor', 'Dutch', 'Wolfie', 'Sato', 'Frost'];
+
 export class Targets {
   readonly list: Target[] = [];
+  readonly bots: Bot[] = [];
   private root = new Group();
 
   constructor(r: Renderer, steel: SteelSpot[], lanes: BotLane[], dummies: Vector3[]) {
     r.scene.add(this.root);
     const paint = r.setupMaterial(new MeshStandardMaterial({ color: 0xe8e0cc, roughness: 0.55, metalness: 0.3 }));
     for (const s of steel) this.list.push(new SteelTarget(s, this.root, paint));
-    for (const l of lanes) this.list.push(new Bot(l.center.clone().setX(l.center.x + rand(-3, 3)), l, this.root, r));
-    for (const p of dummies) this.list.push(new Bot(p, null, this.root, r));
+    for (const l of lanes) this.bots.push(new Bot(l.center.clone().setX(l.center.x + rand(-3, 3)), l, this.root, r));
+    for (const p of dummies) this.bots.push(new Bot(p, null, this.root, r));
+    this.bots.forEach((b, i) => { b.name = NAMES[i % NAMES.length]; });
+    this.list.push(...this.bots);
   }
 
   raycast(o: Vector3, d: Vector3, maxT: number): { target: Target; hit: TargetRay } | null {

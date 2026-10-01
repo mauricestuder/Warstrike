@@ -3,7 +3,7 @@ import {
   MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, SphereGeometry, TorusGeometry, Vector3, type Scene,
 } from 'three';
 import { clamp, damp, smoothstep } from '../core/math';
-import type { GunId } from './defs';
+import type { GunId, WeaponId } from './defs';
 
 interface GunModel {
   root: Group;
@@ -19,7 +19,8 @@ interface GunModel {
 
 const polymer = new MeshStandardMaterial({ color: 0x1f2124, roughness: 0.62, metalness: 0.05 });
 const metal = new MeshStandardMaterial({ color: 0x2c2e31, roughness: 0.32, metalness: 0.85 });
-const tan = new MeshStandardMaterial({ color: 0x8b7a5a, roughness: 0.7, metalness: 0 });
+/** Default furniture colour; every gun gets its own copy so it can take its rarity colour. */
+export const TAN = 0x8b7a5a;
 const glove = new MeshStandardMaterial({ color: 0x2b2a27, roughness: 0.8 });
 const sleeve = new MeshStandardMaterial({ color: 0x4f573f, roughness: 0.9 });
 const glass = new MeshStandardMaterial({ color: 0x223344, roughness: 0.05, metalness: 0.9, transparent: true, opacity: 0.35 });
@@ -42,7 +43,8 @@ function cyl(g: Group, m: MeshStandardMaterial, r: number, len: number, x: numbe
 }
 
 /** Gloved hands and sleeves, posed on the grip and the handguard. */
-function hands(g: Group, gripZ: number, foreZ: number, foreY: number) {
+function hands(g: Group, gripZ: number, foreZ: number, foreY: number, show: boolean) {
+  if (!show) return;
   const right = box(g, glove, 0.05, 0.07, 0.07, 0.012, -0.04, gripZ + 0.01);
   right.rotation.x = -0.3;
   const left = box(g, glove, 0.06, 0.05, 0.09, -0.012, foreY - 0.03, foreZ);
@@ -59,7 +61,7 @@ function hands(g: Group, gripZ: number, foreZ: number, foreY: number) {
   arm(new Vector3(-0.03, foreY - 0.06, foreZ + 0.03), new Vector3(-0.2, -0.28, foreZ + 0.3), 0.036);
 }
 
-function buildAR(): GunModel {
+function buildAR(tan: MeshStandardMaterial, withHands = true): GunModel {
   const g = new Group();
   box(g, polymer, 0.058, 0.075, 0.3, 0, 0.035, -0.1);
   box(g, tan, 0.056, 0.062, 0.28, 0, 0.045, -0.38);
@@ -82,16 +84,18 @@ function buildAR(): GunModel {
   const dot = new Mesh(new SphereGeometry(0.0009, 6, 4), redDot);
   dot.position.set(0, sightY, sz - 0.021);
   g.add(dot);
-  hands(g, 0.02, -0.36, 0.02);
+  hands(g, 0.02, -0.36, 0.02, withHands);
   const muzzle = new Object3D();
   muzzle.position.set(0, 0.045, -0.75);
   g.add(muzzle);
   return { root: g, muzzle, mag, magHome: mag.position.clone(), sightY, sightZ: sz, eyeRelief: 0.2 };
 }
 
-function buildSMG(): GunModel {
+function buildSMG(tan: MeshStandardMaterial, withHands = true): GunModel {
   const g = new Group();
   box(g, polymer, 0.052, 0.085, 0.3, 0, 0.03, -0.1);
+  box(g, tan, 0.054, 0.03, 0.22, 0, -0.012, -0.1); // lower receiver
+  box(g, tan, 0.022, 0.05, 0.03, 0.03, 0.02, 0.23); // stock pad
   cyl(g, metal, 0.018, 0.13, 0, 0.04, -0.31);
   cyl(g, metal, 0.009, 0.04, 0, 0.04, -0.39, 8);
   const mag = box(g, metal, 0.03, 0.2, 0.048, 0, -0.1, -0.09, 0.05);
@@ -106,14 +110,14 @@ function buildSMG(): GunModel {
   box(g, metal, 0.003, 0.018, 0.004, 0, sightY - 0.009, -0.33);
   for (const s of [-1, 1]) box(g, metal, 0.003, 0.024, 0.01, s * 0.011, sightY - 0.008, -0.33);
   box(g, metal, 0.03, 0.012, 0.03, 0, 0.08, -0.33);
-  hands(g, 0.03, -0.28, 0.0);
+  hands(g, 0.03, -0.28, 0.0, withHands);
   const muzzle = new Object3D();
   muzzle.position.set(0, 0.04, -0.42);
   g.add(muzzle);
   return { root: g, muzzle, mag, magHome: mag.position.clone(), sightY, sightZ: 0.02, eyeRelief: 0.14 };
 }
 
-function buildSniper(): GunModel {
+function buildSniper(tan: MeshStandardMaterial, withHands = true): GunModel {
   const g = new Group();
   box(g, polymer, 0.062, 0.075, 0.36, 0, 0.03, -0.1);
   box(g, tan, 0.05, 0.11, 0.3, 0, 0.0, 0.22);
@@ -140,11 +144,113 @@ function buildSniper(): GunModel {
   const lens = new Mesh(new PlaneGeometry(0.04, 0.04), glass);
   lens.position.set(0, sightY, -0.321);
   g.add(lens);
-  hands(g, 0.05, -0.42, 0.02);
+  hands(g, 0.05, -0.42, 0.02, withHands);
   const muzzle = new Object3D();
   muzzle.position.set(0, 0.04, -1.1);
   g.add(muzzle);
   return { root: g, muzzle, mag, magHome: mag.position.clone(), sightY, sightZ: 0.1, eyeRelief: 0.12 };
+}
+
+/** A gun without arms, for loot on the ground. The accent material carries the rarity colour. */
+export function buildGunMesh(id: GunId, accent: MeshStandardMaterial): Group {
+  const m = id === 'ar' ? buildAR(accent, false) : id === 'smg' ? buildSMG(accent, false) : buildSniper(accent, false);
+  return m.root;
+}
+
+interface Fists { model: GunModel; arms: [Group, Group]; }
+
+/** Bare hands: two gloved fists in a loose guard, each on a forearm that pivots at the elbow. */
+function buildHands(): Fists {
+  const g = new Group();
+  const leather = new MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.75 });
+  const knuckle = new MeshStandardMaterial({ color: 0x4a3c2e, roughness: 0.7 });
+  const arm = (side: number) => {
+    const a = new Group();
+    // Elbow sits low and to the side; the fist is ~0.33 m in front of it.
+    a.position.set(side < 0 ? -0.391 : 0.061, -0.083, 0.2);
+    const fore = new Mesh(new CapsuleGeometry(0.042, 0.24, 4, 10), sleeve);
+    fore.rotation.x = Math.PI / 2;
+    fore.position.set(0, 0, -0.12);
+    a.add(fore);
+    const cuff = new Mesh(new CylinderGeometry(0.044, 0.04, 0.06, 12), glove);
+    cuff.rotation.x = Math.PI / 2;
+    cuff.position.set(0, 0, -0.26);
+    a.add(cuff);
+    // Back of the hand, then four curled fingers with a knuckle ridge, and the thumb across them.
+    const palm = new Mesh(new BoxGeometry(0.078, 0.07, 0.07), leather);
+    palm.position.set(0, 0, -0.31);
+    a.add(palm);
+    for (let f = 0; f < 4; f++) {
+      const fx = (f - 1.5) * 0.019;
+      const finger = new Mesh(new BoxGeometry(0.017, 0.05, 0.03), leather);
+      finger.position.set(fx, -0.006, -0.355);
+      a.add(finger);
+      const k = new Mesh(new BoxGeometry(0.017, 0.016, 0.022), knuckle);
+      k.position.set(fx, 0.026, -0.36);
+      a.add(k);
+    }
+    const thumb = new Mesh(new BoxGeometry(0.05, 0.02, 0.022), leather);
+    thumb.position.set(-side * 0.012, -0.03, -0.372);
+    thumb.rotation.y = side * 0.25;
+    a.add(thumb);
+    a.rotation.set(0.35, side * 0.18, side * -0.15);
+    g.add(a);
+    return a;
+  };
+  const arms: [Group, Group] = [arm(-1), arm(1)];
+  const muzzle = new Object3D();
+  muzzle.position.set(-0.165, 0.1, -0.4);
+  g.add(muzzle);
+  const mag = new Object3D();
+  g.add(mag);
+  return { model: { root: g, muzzle, mag, magHome: mag.position.clone(), sightY: 0, sightZ: 0, eyeRelief: 0.3 }, arms };
+}
+
+/** Armour plate held in the left hand while plating up. */
+function buildPlate(): Group {
+  const g = new Group();
+  const plate = new Mesh(new BoxGeometry(0.22, 0.28, 0.025), new MeshStandardMaterial({ color: 0x3a3f44, roughness: 0.55, metalness: 0.35 }));
+  g.add(plate);
+  const strap = new Mesh(new BoxGeometry(0.224, 0.05, 0.03), new MeshStandardMaterial({ color: 0x2f7fd0, roughness: 0.6 }));
+  strap.position.y = 0.06;
+  g.add(strap);
+  const hand = new Mesh(new BoxGeometry(0.06, 0.08, 0.07), glove);
+  hand.position.set(-0.08, -0.12, 0.03);
+  g.add(hand);
+  const arm = new Mesh(new CapsuleGeometry(0.038, 0.3, 4, 10), sleeve);
+  arm.position.set(-0.14, -0.28, 0.12);
+  arm.rotation.set(0.5, 0, 0.45);
+  g.add(arm);
+  return g;
+}
+
+/** Parachute canopy above your head, with lines down to the harness. Striped so it reads from below. */
+function buildCanopy(): Group {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 32;
+  const ctx = c.getContext('2d')!;
+  for (let i = 0; i < 8; i++) { ctx.fillStyle = i % 2 ? '#5b6a3e' : '#d0702a'; ctx.fillRect(i * 32, 0, 32, 32); }
+  const tex = new CanvasTexture(c);
+  const g = new Group();
+  const dome = new Mesh(new SphereGeometry(1, 24, 8, 0, Math.PI * 2, 0, Math.PI * 0.32),
+    new MeshStandardMaterial({ map: tex, side: DoubleSide, roughness: 0.9 }));
+  dome.scale.set(3.4, 1.4, 2.4);
+  dome.position.y = 2.4;
+  g.add(dome);
+  const lineMat = new MeshBasicMaterial({ color: 0x222222 });
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const top = new Vector3(Math.cos(a) * 3.4 * 0.84, 2.4 + 1.4 * 0.54, Math.sin(a) * 2.4 * 0.84);
+    const bot = new Vector3(Math.cos(a) > 0 ? 0.2 : -0.2, -0.1, 0.1);
+    const len = top.distanceTo(bot);
+    const l = new Mesh(new CylinderGeometry(0.004, 0.004, len, 3), lineMat);
+    l.position.copy(top).add(bot).multiplyScalar(0.5);
+    l.lookAt(top);
+    l.rotateX(Math.PI / 2);
+    g.add(l);
+  }
+  g.traverse((o) => { o.frustumCulled = false; });
+  return g;
 }
 
 function flashTexture() {
@@ -180,8 +286,16 @@ export interface VmState {
   draw: number;
   /** 0..1 inspect progress, or -1. */
   inspect: number;
-  /** Hide the gun (looking through a scope). */
+  /** Hide the gun (looking through a scope, falling, in the plane). */
   hidden: boolean;
+  /** 0..1 how far the gun is lowered (plating up, shop open). */
+  lower: number;
+  /** 0..1 progress of the plate being inserted, or -1. */
+  plate: number;
+  /** Parachute open. */
+  chute: boolean;
+  /** Camera pitch (the canopy is counter-rotated so it stays above you). */
+  pitch: number;
 }
 
 /**
@@ -190,8 +304,15 @@ export interface VmState {
  * spring-driven recoil kick, reload (mag drops and returns), draw and inspect.
  */
 export class ViewModel {
-  private models: Record<GunId, GunModel>;
+  private models: Record<WeaponId, GunModel>;
+  private accents: Record<GunId, MeshStandardMaterial>;
   private current: GunModel;
+  private fists: Fists;
+  private punchT = -1;
+  private punchSide = 0;
+  private plateMesh: Group;
+  private canopy: Group;
+  private chuteK = 0;
   private pivot = new Group();
   private flash: Group;
   private flashT = 0;
@@ -204,7 +325,20 @@ export class ViewModel {
   private landDip = 0; private landV = 0;
 
   constructor(scene: Scene) {
-    this.models = { ar: buildAR(), smg: buildSMG(), sniper: buildSniper() };
+    const accent = () => new MeshStandardMaterial({ color: TAN, roughness: 0.7, metalness: 0 });
+    this.accents = { ar: accent(), smg: accent(), sniper: accent() };
+    this.fists = buildHands();
+    this.models = {
+      ar: buildAR(this.accents.ar), smg: buildSMG(this.accents.smg), sniper: buildSniper(this.accents.sniper), hands: this.fists.model,
+    };
+    this.plateMesh = buildPlate();
+    this.plateMesh.scale.setScalar(0.75);
+    this.plateMesh.visible = false;
+    this.plateMesh.traverse((o) => { o.frustumCulled = false; });
+    scene.add(this.plateMesh);
+    this.canopy = buildCanopy();
+    this.canopy.visible = false;
+    scene.add(this.canopy);
     for (const m of Object.values(this.models)) {
       m.root.visible = false;
       m.root.traverse((o) => { o.frustumCulled = false; });
@@ -225,7 +359,22 @@ export class ViewModel {
     this.flash.visible = false;
   }
 
-  select(id: GunId) {
+  /** Paints the gun's furniture in its rarity colour (legendary is gold, and metallic). */
+  setRarity(id: GunId, color: string, legendary: boolean) {
+    const m = this.accents[id];
+    m.color.set(color === '#b9bec4' ? TAN : color);
+    if (!legendary && color !== '#b9bec4') m.color.multiplyScalar(0.75);
+    m.metalness = legendary ? 0.85 : 0;
+    m.roughness = legendary ? 0.3 : 0.7;
+  }
+
+  /** Throws a punch with alternating fists. */
+  punch() {
+    this.punchSide = 1 - this.punchSide;
+    this.punchT = 0;
+  }
+
+  select(id: WeaponId) {
     this.current.root.visible = false;
     this.current = this.models[id];
     this.current.root.visible = true;
@@ -307,6 +456,22 @@ export class ViewModel {
     }
     m.mag.position.copy(magPos);
 
+    // Lowered: plating up or browsing the shop.
+    pos.y -= s.lower * 0.22; rx -= s.lower * 0.5;
+
+    // Fists: guard sways with the walk, pumps when sprinting, punches snap out and come back.
+    if (m === this.fists.model) {
+      if (this.punchT >= 0) { this.punchT += dt / 0.36; if (this.punchT >= 1) this.punchT = -1; }
+      for (let i = 0; i < 2; i++) {
+        const a = this.fists.arms[i], side = i === 0 ? -1 : 1;
+        const t = this.punchT >= 0 && this.punchSide === i ? this.punchT : -1;
+        const e = t < 0 ? 0 : t < 0.3 ? smoothstep(0, 0.3, t) : 1 - smoothstep(0.3, 1, t);
+        const pump = Math.sin(this.bobT + i * Math.PI) * s.sprint;
+        a.position.set((side < 0 ? -0.391 : 0.061) - side * e * 0.08, -0.083 + e * 0.06 + pump * 0.03, 0.2 - e * 0.26 + pump * 0.04);
+        a.rotation.set(0.35 - e * 0.3 + s.sprint * 0.3 + pump * 0.2, side * (0.18 + e * 0.08), side * (-0.15 - e * 0.1));
+      }
+    }
+
     // Draw: come up from below.
     const drawOff = 1 - smoothstep(0, 1, s.draw);
     pos.y -= drawOff * 0.25; rx -= drawOff * 0.8;
@@ -328,6 +493,20 @@ export class ViewModel {
     this.pivot.position.copy(pos);
     this.pivot.rotation.set(rx, ry, rz, 'YXZ');
     this.pivot.visible = !s.hidden;
+
+    // Plate: the left hand brings it up from below and pushes it into the vest.
+    this.plateMesh.visible = s.plate >= 0 && !s.hidden;
+    if (s.plate >= 0) {
+      const t = s.plate, up = smoothstep(0, 0.45, t), push = smoothstep(0.55, 0.9, t);
+      this.plateMesh.position.set(-0.05 - up * 0.04, -0.45 + up * 0.27 - push * 0.3, -0.42 + push * 0.14);
+      this.plateMesh.rotation.set(-0.3 + up * 0.25 + push * 0.6, 0.1, 0.15 - up * 0.1);
+    }
+
+    // Parachute: opens with a quick bloom, sways a little.
+    this.chuteK = damp(this.chuteK, s.chute ? 1 : 0, s.chute ? 5 : 12, dt);
+    this.canopy.visible = this.chuteK > 0.02;
+    this.canopy.scale.set(0.3 + this.chuteK * 0.7, 0.3 + this.chuteK * 0.7, 0.3 + this.chuteK * 0.7);
+    this.canopy.rotation.set(-s.pitch, 0, Math.sin(performance.now() / 900) * 0.04, 'XYZ');
 
     if (this.flashT > 0) { this.flashT -= dt; if (this.flashT <= 0) this.flash.visible = false; }
   }
