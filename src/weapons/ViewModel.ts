@@ -15,6 +15,8 @@ interface GunModel {
   sightZ: number;
   /** How far in front of the eye the sight sits when aiming. */
   eyeRelief: number;
+  /** Pump-action forend (slides back and forth after each shot). */
+  pump?: Object3D;
 }
 
 const polymer = new MeshStandardMaterial({ color: 0x1f2124, roughness: 0.62, metalness: 0.05 });
@@ -42,9 +44,9 @@ function cyl(g: Group, m: MeshStandardMaterial, r: number, len: number, x: numbe
   return mesh;
 }
 
-/** Gloved hands and sleeves, posed on the grip and the handguard. */
-function hands(g: Group, gripZ: number, foreZ: number, foreY: number, show: boolean) {
-  if (!show) return;
+/** Gloved hands and sleeves, posed on the grip and the handguard. Returns the left hand and arm. */
+function hands(g: Group, gripZ: number, foreZ: number, foreY: number, show: boolean): Object3D[] {
+  if (!show) return [];
   const right = box(g, glove, 0.05, 0.07, 0.07, 0.012, -0.04, gripZ + 0.01);
   right.rotation.x = -0.3;
   const left = box(g, glove, 0.06, 0.05, 0.09, -0.012, foreY - 0.03, foreZ);
@@ -56,9 +58,10 @@ function hands(g: Group, gripZ: number, foreZ: number, foreY: number, show: bool
     m.lookAt(to);
     m.rotateX(Math.PI / 2);
     g.add(m);
+    return m;
   };
   arm(new Vector3(0.02, -0.07, gripZ + 0.05), new Vector3(0.12, -0.26, gripZ + 0.34), 0.038);
-  arm(new Vector3(-0.03, foreY - 0.06, foreZ + 0.03), new Vector3(-0.2, -0.28, foreZ + 0.3), 0.036);
+  return [left, arm(new Vector3(-0.03, foreY - 0.06, foreZ + 0.03), new Vector3(-0.2, -0.28, foreZ + 0.3), 0.036)];
 }
 
 function buildAR(tan: MeshStandardMaterial, withHands = true): GunModel {
@@ -151,9 +154,49 @@ function buildSniper(tan: MeshStandardMaterial, withHands = true): GunModel {
   return { root: g, muzzle, mag, magHome: mag.position.clone(), sightY, sightZ: 0.1, eyeRelief: 0.12 };
 }
 
+/** Pump-action shotgun: receiver, barrel over a tube magazine, a sliding forend, bead sight. */
+function buildShotgun(tan: MeshStandardMaterial, withHands = true): GunModel {
+  const g = new Group();
+  box(g, polymer, 0.056, 0.08, 0.26, 0, 0.03, -0.08); // receiver
+  box(g, metal, 0.004, 0.03, 0.08, 0.029, 0.04, -0.1); // ejection port edge
+  box(g, tan, 0.046, 0.09, 0.26, 0, 0.0, 0.17, 0.12); // stock
+  box(g, polymer, 0.05, 0.11, 0.03, 0, -0.01, 0.31, 0.12); // butt pad
+  box(g, polymer, 0.03, 0.1, 0.045, 0, -0.04, 0.03, -0.3); // grip
+  box(g, metal, 0.012, 0.03, 0.05, 0, -0.025, -0.02); // trigger guard
+  cyl(g, metal, 0.016, 0.5, 0, 0.05, -0.45); // barrel
+  cyl(g, metal, 0.013, 0.42, 0, 0.012, -0.4); // tube magazine
+  cyl(g, metal, 0.015, 0.02, 0, 0.012, -0.62, 10); // mag cap
+  box(g, metal, 0.02, 0.012, 0.02, 0, 0.012, -0.66); // barrel band
+  // Raised rib along the barrel with a bead at the end and a notch at the back (high enough to see over the receiver).
+  const sightY = 0.094;
+  box(g, polymer, 0.01, 0.022, 0.62, 0, 0.078, -0.38);
+  const bead = new Mesh(new SphereGeometry(0.0045, 8, 6), new MeshStandardMaterial({ color: 0xd8d0b0, roughness: 0.3, metalness: 0.6 }));
+  bead.position.set(0, sightY, -0.67);
+  g.add(bead);
+  for (const s of [-1, 1]) box(g, metal, 0.008, 0.012, 0.01, s * 0.009, sightY, -0.02);
+  // The pump: a ribbed forend on the tube, and the left hand rides on it.
+  const pump = new Group();
+  box(pump, tan, 0.046, 0.042, 0.17, 0, 0.012, -0.36);
+  for (let i = 0; i < 6; i++) box(pump, polymer, 0.048, 0.006, 0.012, 0, -0.008, -0.295 - i * 0.026);
+  g.add(pump);
+  for (const o of hands(g, 0.03, -0.36, 0.0, withHands)) pump.attach(o);
+  // A shell going into the loading port during reloads.
+  const mag = new Group();
+  mag.position.set(0, -0.02, -0.09);
+  const shell = new Mesh(new CylinderGeometry(0.009, 0.009, 0.06, 10), new MeshStandardMaterial({ color: 0xb02020, roughness: 0.5 }));
+  shell.rotation.x = Math.PI / 2;
+  mag.add(shell);
+  g.add(mag);
+  const muzzle = new Object3D();
+  muzzle.position.set(0, 0.05, -0.71);
+  g.add(muzzle);
+  return { root: g, muzzle, mag, magHome: mag.position.clone(), sightY, sightZ: -0.02, eyeRelief: 0.26, pump };
+}
+
 /** A gun without arms, for loot on the ground. The accent material carries the rarity colour. */
 export function buildGunMesh(id: GunId, accent: MeshStandardMaterial): Group {
-  const m = id === 'ar' ? buildAR(accent, false) : id === 'smg' ? buildSMG(accent, false) : buildSniper(accent, false);
+  const m = id === 'ar' ? buildAR(accent, false) : id === 'smg' ? buildSMG(accent, false)
+    : id === 'shotgun' ? buildShotgun(accent, false) : buildSniper(accent, false);
   return m.root;
 }
 
@@ -323,13 +366,15 @@ export class ViewModel {
   private swayX = 0; private swayY = 0;
   private bobT = 0;
   private landDip = 0; private landV = 0;
+  private pumpT = -1;
 
   constructor(scene: Scene) {
     const accent = () => new MeshStandardMaterial({ color: TAN, roughness: 0.7, metalness: 0 });
-    this.accents = { ar: accent(), smg: accent(), sniper: accent() };
+    this.accents = { ar: accent(), smg: accent(), sniper: accent(), shotgun: accent() };
     this.fists = buildHands();
     this.models = {
-      ar: buildAR(this.accents.ar), smg: buildSMG(this.accents.smg), sniper: buildSniper(this.accents.sniper), hands: this.fists.model,
+      ar: buildAR(this.accents.ar), smg: buildSMG(this.accents.smg), sniper: buildSniper(this.accents.sniper),
+      shotgun: buildShotgun(this.accents.shotgun), hands: this.fists.model,
     };
     this.plateMesh = buildPlate();
     this.plateMesh.scale.setScalar(0.75);
@@ -397,6 +442,9 @@ export class ViewModel {
     this.flashT = 0.035;
   }
 
+  /** Racks the pump after a shotgun shot. */
+  cycle() { this.pumpT = 0; }
+
   land(impact: number) {
     this.landV -= Math.min(impact, 12) * 0.012;
   }
@@ -455,6 +503,19 @@ export class ViewModel {
       }
     }
     m.mag.position.copy(magPos);
+    if (m.pump) {
+      // Pump: back and forward a beat after the shot, and once more after an empty reload.
+      let back = 0;
+      if (this.pumpT >= 0) {
+        this.pumpT += dt;
+        const t = (this.pumpT - 0.1) / 0.36;
+        if (t > 0) back = Math.sin(Math.min(1, t) * Math.PI);
+        if (t >= 1) this.pumpT = -1;
+        rx -= back * 0.06;
+      }
+      if (s.reload >= 0 && s.reloadEmpty && s.reload > 0.75) back = Math.max(back, Math.sin(clamp((s.reload - 0.75) / 0.15, 0, 1) * Math.PI));
+      m.pump.position.z = back * 0.09;
+    }
 
     // Lowered: plating up or browsing the shop.
     pos.y -= s.lower * 0.22; rx -= s.lower * 0.5;

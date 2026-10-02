@@ -27,7 +27,7 @@ export class Weapons {
   private cur: GunState;
   private lastGun = 0;
   /** Shared ammo pools by type. */
-  readonly ammo: Record<AmmoType, number> = { rifle: 0, smg: 0, sniper: 0 };
+  readonly ammo: Record<AmmoType, number> = { rifle: 0, smg: 0, sniper: 0, shells: 0 };
   /** Set by the game: no firing or switching (in the plane, falling, plating, shop open). */
   blocked = false;
   /** 0..1 lowered gun (plating, shop). */
@@ -72,8 +72,10 @@ export class Weapons {
   private holding = false;
   /** Range mode: reloads never use up reserve ammo. */
   infiniteReserve = false;
-  /** Spread (half-angle, rad) used for the crosshair. */
+  /** Spread (half-angle, rad) of where a shot goes. */
   spread = 0;
+  /** What the crosshair shows: the spread, plus the pellet cone for a shotgun. */
+  get crosshairSpread() { const d = this.def; return this.spread + (d.pelletSpread ?? 0) * lerp(1, 0.75, this.ads); }
   private readonly tmpDir = new Vector3();
   private readonly tmpMuzzle = new Vector3();
 
@@ -304,7 +306,18 @@ export class Weapons {
     // Muzzle position in world space (viewmodel lives in camera space).
     const muzzle = this.vm.muzzleLocal(this.tmpMuzzle);
     camera.localToWorld(muzzle);
-    this.ballistics.fire(camera.position, dir, d, muzzle);
+    if (d.pellets && d.pellets > 1) {
+      // A shell: pellets scattered in a cone (a bit tighter aimed), counted as one hit per target.
+      const cone = (d.pelletSpread ?? 0) * lerp(1, 0.75, this.ads), pd = new Vector3();
+      this.ballistics.volley(true);
+      for (let k = 0; k < d.pellets; k++) {
+        // The first pellet goes dead centre; the rest spread evenly-ish around it.
+        const pr = k === 0 ? 0 : cone * Math.sqrt((k - 0.5 + Math.random()) / (d.pellets - 1)), pa = (k / d.pellets) * Math.PI * 2 + Math.random() * 0.8;
+        pd.copy(dir).addScaledVector(right, Math.tan(pr) * Math.cos(pa)).addScaledVector(up, Math.tan(pr) * Math.sin(pa)).normalize();
+        this.ballistics.fire(camera.position, pd, d, muzzle);
+      }
+      this.ballistics.volley(false);
+    } else this.ballistics.fire(camera.position, dir, d, muzzle);
     this.fx.muzzle(muzzle);
     this.sfx.shot(g.base as GunId);
     this.onShot();
@@ -323,8 +336,9 @@ export class Weapons {
     this.sprayIdx++;
     this.lastShot = this.time;
     this.bloom = Math.min(d.bloomMax, this.bloom + d.bloomPerShot);
-    const heavy = d.id === 'sniper';
+    const heavy = d.id === 'sniper' || d.id === 'shotgun';
     this.vm.kick((heavy ? 0.16 : 0.035) * (1 - this.ads * 0.5), heavy ? 1.6 : 0.55, (Math.random() - 0.5) * 0.04);
+    if (d.pellets) this.vm.cycle();
     this.syncAmmo();
     if (g.mag === 0 && (this.ammo[d.ammo] > 0 || this.infiniteReserve)) setTimeout(() => { if (this.cur === g && g.mag === 0) this.startReload(); }, 250);
   }

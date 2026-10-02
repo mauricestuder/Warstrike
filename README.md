@@ -16,7 +16,18 @@ Or build a single self-contained file you can double-click or send to a friend:
 npm run share      # → Warstrike.html (no server needed)
 ```
 
-## What's new in build 0.5.1
+## What's new in build 0.6
+
+**A fourth gun: the BRUISER 12 pump shotgun.**
+- Each shell fires 8 pellets in a cone. Up close that's about 150 damage, enough to drop an unarmoured enemy in one shot. It falls off fast: about 65 at 10 m and almost nothing past 20 m.
+- Aiming tightens the pellet cone by a quarter, and the crosshair opens to show the cone.
+- Pump action: it racks after every shot, with the left hand riding the pump, and you hear the pump.
+- It's slow to fire (about 72 shots a minute) and holds 6 shells. It has its own ammo, 12-gauge shells (orange boxes).
+- Each shell counts as one hit for feedback: one hit marker, one sound and one damage number with the total.
+- You find it in the loot and in supply boxes, and bots use it too (they close in to about 6 m).
+- On the gun range it's slot 4.
+
+## What came in build 0.5.1
 
 **More loot:**
 - 22 supply boxes around the map instead of 9.
@@ -78,7 +89,7 @@ npm run share      # → Warstrike.html (no server needed)
   - **Guns** float above the ground with a glow in their rarity colour: Common (grey), Uncommon (green), Rare (blue), Epic (purple) or Legendary (gold).
     - Better rarity means more damage (up to +20%) and less recoil (down to −22%), and the gun's furniture takes the rarity colour.
     - Legendary guns are gold.
-  - **Ammo boxes** for rifle, SMG and sniper rounds, **armour plates** and **cash** are picked up just by walking over them.
+  - **Ammo boxes** for rifle, SMG and sniper rounds and shotgun shells, **armour plates** and **cash** are picked up just by walking over them.
   - **Supply boxes** (the gold beams) spill an Epic or Legendary gun, ammo, plates and cash.
   - You carry two guns plus your fists. **F** picks up a gun, or swaps it for the one in your hand.
 - **Buy stations** (green $ on the map), where you spend the cash you collected:
@@ -137,7 +148,7 @@ npm run share      # → Warstrike.html (no server needed)
 - Step-up on stairs and small ledges; landing dip, head bob and slide roll on the camera.
 
 **Gunplay**
-- Three guns: **M7 Vanguard** (AR), **Viper-9** (SMG) and **Longbow .338** (sniper). Each has its own damage, falloff, RPM, ADS time, sprint-to-fire time and move speed.
+- Three guns: **M7 Vanguard** (AR), **Viper-9** (SMG) and **Longbow .338** (sniper); build 0.6 added the **Bruiser 12** shotgun. Each has its own damage, falloff, RPM, ADS time, sprint-to-fire time and move speed.
 - Travelling bullets with real drop (9.81 m/s²). The SMG is hitscan.
 - Wall penetration by material: wood and thin concrete let rounds through at reduced damage; thick concrete, dirt and steel stop them.
 - Recoil patterns that move your real aim and recover only the part you didn't pull down yourself.
@@ -166,7 +177,7 @@ npm run share      # → Warstrike.html (no server needed)
 | C / Ctrl | Crouch (toggle / hold) · while sprinting: slide |
 | Left / right mouse | Fire / aim |
 | R | Reload |
-| 1 2 3 / wheel | Switch weapon |
+| 1 2 3 4 / wheel | Switch weapon (range: 4 is the shotgun; battle royale: 4 is plate up) |
 | X | Fists (run faster) · again: back to your gun |
 | F | Pick up · open supply box · buy station |
 | 4 | Plate up (hold for several) |

@@ -18,9 +18,9 @@ const DMG_TO_PLAYER = 0.9;
 const DMG_TO_BOT = 0.33;
 const SIGHT = 115, SIGHT_SNIPER = 160, FOV_HALF = 75 * DEG;
 /** How far each gun is willing to fight, and the distance it likes to fight at. */
-const RANGE: Record<GunId | 'hands', [number, number]> = { smg: [50, 11], ar: [115, 24], sniper: [180, 55], hands: [14, 1.2] };
+const RANGE: Record<GunId | 'hands', [number, number]> = { smg: [50, 11], ar: [115, 24], sniper: [180, 55], shotgun: [22, 6], hands: [14, 1.2] };
 /** Bots fire a bit slower than the real cyclic rate and in bursts. */
-const BURST: Record<GunId, [number, number, number]> = { ar: [3, 7, 1.3], smg: [4, 9, 1.25], sniper: [1, 1, 1.15] };
+const BURST: Record<GunId, [number, number, number]> = { ar: [3, 7, 1.3], smg: [4, 9, 1.25], sniper: [1, 1, 1.15], shotgun: [1, 1, 1.2] };
 /** How far away a gunshot draws attention. */
 export const HEARING = 70;
 /** Metres of leaves a bot can't see through; anything less still makes you harder to spot. */
@@ -541,7 +541,7 @@ export class BotAI {
   }
 
   private giveGun(b: Brain, rarity: Rarity) {
-    const id = (['ar', 'smg', 'sniper', 'ar', 'smg'] as GunId[])[Math.floor(Math.random() * 5)];
+    const id = (['ar', 'smg', 'sniper', 'shotgun', 'ar', 'smg'] as GunId[])[Math.floor(Math.random() * 6)];
     this.equip(b, id, rarity, GUNS[id].mag);
   }
 
@@ -588,7 +588,7 @@ export class BotAI {
       if (d > 2.2) return;
       b.cooldown = 0.75 + Math.random() * 0.3;
       this.g.sfx.punchAt(b.bot.position, this.g.renderer.camera.position, this.g.player.yaw);
-      this.hit(b, t, HANDS, 'body', d, chest);
+      this.hit(b, t, HANDS.damage * falloffMul(HANDS, d), 'body', chest);
       return;
     }
     const gun = b.gun, def = gun.def;
@@ -600,7 +600,7 @@ export class BotAI {
     gun.mag--;
     b.burstLeft--;
     b.cooldown = (60 / def.rpm) * slow;
-    if (b.burstLeft <= 0) b.cooldown += gun.id === 'sniper' ? 0.5 + Math.random() * 0.7 : 0.15 + Math.random() * 0.3 + (1 - b.skill) * 0.2;
+    if (b.burstLeft <= 0) b.cooldown += gun.id === 'sniper' ? 0.5 + Math.random() * 0.7 : gun.id === 'shotgun' ? 0.1 + Math.random() * 0.35 : 0.15 + Math.random() * 0.3 + (1 - b.skill) * 0.2;
 
     // Aim: chest, sometimes the head; error shrinks as it tracks you and grows when you move.
     const headshot = Math.random() < 0.1 + b.skill * 0.12;
@@ -617,16 +617,9 @@ export class BotAI {
     dir.addScaledVector(right, Math.tan(sigma * gauss())).addScaledVector(up, Math.tan(sigma * gauss())).normalize();
 
     const range = RANGE[gun.id][0] * 1.3;
-    const wall = this.colliders.raycast(eye, dir, range);
-    const maxT = wall ? wall.t : range;
     const muzzle = b.bot.muzzle(new Vector3());
-    let hitT = -1, zone: HitZone = 'body';
-    if (t === 'player') { const r = this.playerRay(eye, dir, maxT); if (r) { hitT = r.t; zone = r.zone; } }
-    else { const r = t.raycast(eye, dir, maxT); if (r) { hitT = r.t; zone = r.zone; } }
-    const end = eye.clone().addScaledVector(dir, hitT >= 0 ? hitT : maxT);
     const cam = this.g.renderer.camera.position;
     const near = muzzle.distanceToSquared(cam) < 90 * 90;
-    this.g.fx.tracer(muzzle, end, gun.id === 'sniper' ? 0.02 : 0.014, gun.id === 'sniper' ? 0.08 : 0.05, 0xffc078);
     if (near) this.g.fx.muzzle(muzzle);
     this.g.sfx.shotAt(gun.id, muzzle, cam, this.g.player.yaw);
     this.noise(eye, HEARING, b.bot);
@@ -634,19 +627,39 @@ export class BotAI {
       const pg = this.pings.find((q) => q.pos.distanceToSquared(b.pos) < 9);
       if (pg) { pg.pos.copy(b.pos); pg.life = 2; } else this.pings.push({ pos: b.pos.clone(), life: 2 });
     }
-    if (hitT >= 0) {
-      this.hit(b, t, def, zone, hitT, end);
-    } else {
-      if (wall && end.distanceToSquared(cam) < 80 * 80) this.g.fx.impact(end, wall.normal, wall.box.surface);
-      if (t === 'player') this.whiz(eye, dir, maxT);
-      else this.attacked(t, b.bot);
+    // One ray per pellet (a shotgun scatters 8 of them around the aim point); the damage lands as one hit.
+    const pellets = def.pellets ?? 1, base = dir.clone(), pd = new Vector3();
+    let dmg = 0, head = false, hitAt: Vector3 | null = null, missed = false;
+    for (let k = 0; k < pellets; k++) {
+      pd.copy(base);
+      if (k > 0) {
+        const pr = (def.pelletSpread ?? 0) * Math.sqrt(Math.random()), pa = Math.random() * Math.PI * 2;
+        pd.addScaledVector(right, Math.tan(pr) * Math.cos(pa)).addScaledVector(up, Math.tan(pr) * Math.sin(pa)).normalize();
+      }
+      const wall = this.colliders.raycast(eye, pd, range);
+      const maxT = wall ? wall.t : range;
+      let hitT = -1, zone: HitZone = 'body';
+      if (t === 'player') { const r = this.playerRay(eye, pd, maxT); if (r) { hitT = r.t; zone = r.zone; } }
+      else { const r = t.raycast(eye, pd, maxT); if (r) { hitT = r.t; zone = r.zone; } }
+      const end = eye.clone().addScaledVector(pd, hitT >= 0 ? hitT : maxT);
+      if (k < 4) this.g.fx.tracer(muzzle, end, gun.id === 'sniper' ? 0.02 : 0.014, gun.id === 'sniper' ? 0.08 : 0.05, 0xffc078);
+      if (hitT >= 0) {
+        const zm = zone === 'head' ? def.headMult : zone === 'limb' ? def.limbMult : 1;
+        dmg += def.damage * falloffMul(def, hitT) * zm;
+        head ||= zone === 'head';
+        hitAt ??= end;
+      } else {
+        missed = true;
+        if (wall && end.distanceToSquared(cam) < 80 * 80 && k < 4) this.g.fx.impact(end, wall.normal, wall.box.surface);
+        if (t === 'player' && k === 0) this.whiz(eye, pd, maxT);
+      }
     }
+    if (hitAt) this.hit(b, t, dmg, head ? 'head' : 'body', hitAt);
+    else if (missed && t !== 'player') this.attacked(t, b.bot);
   }
 
-  /** Damage from a bot's shot or punch. */
-  private hit(b: Brain, t: Foe, def: GunDef, zone: HitZone, dist: number, at: Vector3) {
-    const zm = zone === 'head' ? def.headMult : zone === 'limb' ? def.limbMult : 1;
-    const dmg = def.damage * falloffMul(def, dist) * zm;
+  /** Damage (already scaled for range and hit zone) from a bot's shot or punch. */
+  private hit(b: Brain, t: Foe, dmg: number, zone: HitZone, at: Vector3) {
     const cam = this.g.renderer.camera.position;
     if (t === 'player') {
       this.m.damage(dmg * DMG_TO_PLAYER, false, b.bot.name, b.bot.eye(new Vector3()));

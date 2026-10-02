@@ -33,6 +33,11 @@ const SHOTS: Record<GunId, ShotSpec> = {
     len: 1.1, crack: 1.4, blast: 1.7, blastLp: 3000, blastDecay: 0.09, boomHz: 110, boom: 1.1,
     thump: [95, 32, 0.22, 0.8], drive: 3.0, mech: [],
   },
+  // Buckshot is slower than sound: almost no crack, all blast and boom.
+  shotgun: {
+    len: 0.9, crack: 0.2, blast: 1.9, blastLp: 2600, blastDecay: 0.08, boomHz: 95, boom: 1.25,
+    thump: [105, 34, 0.18, 0.95], drive: 3.2, mech: [],
+  },
 };
 
 /** RBJ biquad, used offline while rendering shots and impulse responses. */
@@ -262,9 +267,9 @@ export class Sfx {
     src.buffer = variants[Math.floor(Math.random() * variants.length)];
     src.playbackRate.value = 0.97 + Math.random() * 0.06;
     const g = ctx.createGain();
-    g.gain.value = (id === 'sniper' ? 0.75 : id === 'smg' ? 0.55 : 0.65) * (0.92 + Math.random() * 0.08);
+    g.gain.value = (id === 'sniper' || id === 'shotgun' ? 0.75 : id === 'smg' ? 0.55 : 0.65) * (0.92 + Math.random() * 0.08);
     const send = ctx.createGain();
-    send.gain.value = id === 'sniper' ? 0.4 : 0.35;
+    send.gain.value = id === 'sniper' || id === 'shotgun' ? 0.4 : 0.35;
     src.connect(g).connect(this.master);
     g.connect(send).connect(this.echoIn);
     g.connect(this.lowIn);
@@ -273,6 +278,11 @@ export class Sfx {
       // Bolt cycle.
       this.burst(t + 0.55, 0.05, 'bandpass', 2500, 4, 0.35);
       this.burst(t + 0.72, 0.06, 'bandpass', 1900, 4, 0.4);
+    }
+    if (id === 'shotgun') {
+      // Pump: rack back, then forward (lower and chunkier).
+      this.burst(t + 0.24, 0.05, 'bandpass', 1700, 3, 0.4);
+      this.burst(t + 0.42, 0.06, 'bandpass', 1200, 3, 0.45);
     }
   }
 
@@ -305,7 +315,7 @@ export class Sfx {
   /** Someone else's gunshot. */
   shotAt(id: GunId, pos: Vector3, ear: Vector3, yaw: number) {
     if (!this.ok) return;
-    const ctx = this.ctx!, dest = this.spatial(pos, ear, yaw, id === 'sniper' ? 1 : id === 'smg' ? 0.7 : 0.8, 400);
+    const ctx = this.ctx!, dest = this.spatial(pos, ear, yaw, id === 'sniper' || id === 'shotgun' ? 1 : id === 'smg' ? 0.7 : 0.8, 400);
     if (!dest) return;
     const src = ctx.createBufferSource();
     src.buffer = this.shots[id][Math.floor(Math.random() * this.shots[id].length)];

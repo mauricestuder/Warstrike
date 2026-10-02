@@ -5,7 +5,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Renderer } from '../render/Renderer';
 import {
-  AMMO_BOX, AMMO_NAME, GUNS, RARITY, type AmmoType, type GunId, type Rarity,
+  AMMO_BOX, AMMO_NAME, GUN_IDS, GUNS, RARITY, type AmmoType, type GunId, type Rarity,
 } from '../weapons/defs';
 import { buildGunMesh, TAN } from '../weapons/ViewModel';
 import type { Colliders } from '../world/Colliders';
@@ -32,8 +32,7 @@ export interface Spot { pos: Vector3; indoor: boolean; }
 export type Focus = { type: 'item'; item: LootItem } | { type: 'supply'; box: SupplyBox } | { type: 'station'; station: BuyStation };
 
 type Rnd = () => number;
-const GUN_IDS: GunId[] = ['ar', 'smg', 'sniper'];
-const AMMO_FOR: Record<GunId, AmmoType> = { ar: 'rifle', smg: 'smg', sniper: 'sniper' };
+const AMMO_FOR: Record<GunId, AmmoType> = { ar: 'rifle', smg: 'smg', sniper: 'sniper', shotgun: 'shells' };
 
 /** Rolls a rarity. `boost` shifts the odds up (supply boxes, bought guns). */
 export function rollRarity(rnd: Rnd, boost = 0): Rarity {
@@ -186,14 +185,14 @@ export class Loot {
     for (const s of floor) {
       const k = rnd();
       if (k < 0.45) {
-        const id = GUN_IDS[Math.floor(rnd() * 3)];
+        const id = GUN_IDS[Math.floor(rnd() * GUN_IDS.length)];
         this.spawnGun(s.pos, id, rollRarity(rnd));
         // Often with a box of its ammo next to it.
         if (rnd() < 0.5) {
           const a = rnd() * Math.PI * 2, p = s.pos.clone().add(new Vector3(Math.cos(a) * 0.6, 0, Math.sin(a) * 0.6));
           if (this.colliders.groundBelow(p.x, p.z, 0.1, p.y + 0.05) > p.y - 0.05 && this.clear(p, 0.3, 0.3, 0.3)) this.spawnAmmo(p, AMMO_FOR[id]);
         }
-      } else if (k < 0.7) this.spawnAmmo(s.pos, (['rifle', 'smg', 'sniper', 'rifle', 'smg'] as AmmoType[])[Math.floor(rnd() * 5)]);
+      } else if (k < 0.7) this.spawnAmmo(s.pos, (['rifle', 'smg', 'sniper', 'shells', 'rifle', 'smg'] as AmmoType[])[Math.floor(rnd() * 6)]);
       else if (k < 0.86) this.spawn({ kind: 'plate', rarity: 2, amount: 1 + (rnd() < 0.3 ? 1 : 0) }, s.pos);
       else this.spawn({ kind: 'cash', rarity: 4, amount: 100 * Math.round(2 + rnd() * 6) }, s.pos);
     }
@@ -232,7 +231,7 @@ export class Loot {
       if (rarity > 0 && rarity < 4) accent.color.multiplyScalar(0.75);
       const g = buildGunMesh(id, accent);
       // Centre it on its length so it spins about its middle.
-      g.position.z = id === 'sniper' ? 0.42 : id === 'ar' ? 0.25 : 0.1;
+      g.position.z = id === 'sniper' ? 0.42 : id === 'ar' || id === 'shotgun' ? 0.25 : 0.1;
       const wrap = new Group();
       wrap.add(g);
       parts = this.bake(wrap);
@@ -252,12 +251,12 @@ export class Loot {
       return m;
     };
     if (kind === 'ammo') {
-      const band = { rifle: '#d8b030', smg: '#3f8fd8', sniper: '#d84a3a' }[variant as AmmoType];
+      const band = { rifle: '#d8b030', smg: '#3f8fd8', sniper: '#d84a3a', shells: '#e07a20' }[variant as AmmoType];
       const label = labelTexture(128, 64, (ctx) => {
         ctx.fillStyle = '#4a5233'; ctx.fillRect(0, 0, 128, 64);
         ctx.fillStyle = band; ctx.fillRect(0, 20, 128, 24);
         ctx.fillStyle = '#111'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
-        ctx.fillText(variant === 'rifle' ? '5.56' : variant === 'smg' ? '9MM' : '.338', 64, 39);
+        ctx.fillText({ rifle: '5.56', smg: '9MM', sniper: '.338', shells: '12 GA' }[variant as AmmoType], 64, 39);
       });
       const body = new MeshStandardMaterial({ map: label, roughness: 0.6, metalness: 0.3 });
       add(new BoxGeometry(0.34, 0.2, 0.16), body, 0, 0.1, 0);

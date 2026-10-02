@@ -1,9 +1,9 @@
 import { DEG } from '../core/math';
 
-export type GunId = 'ar' | 'smg' | 'sniper';
+export type GunId = 'ar' | 'smg' | 'sniper' | 'shotgun';
 /** Everything you can hold: a gun or your bare hands. */
 export type WeaponId = GunId | 'hands';
-export type AmmoType = 'rifle' | 'smg' | 'sniper';
+export type AmmoType = 'rifle' | 'smg' | 'sniper' | 'shells';
 
 /** Everything that makes one gun feel different from another. Angles in radians unless noted. */
 export interface GunDef {
@@ -55,6 +55,9 @@ export interface GunDef {
   scope: boolean;
   /** Seconds to swap to this gun. */
   drawTime: number;
+  /** Shotguns: pellets per shell (each does `damage`) and their cone half-angle from the hip. */
+  pellets?: number;
+  pelletSpread?: number;
 }
 
 /** Builds a learnable spray pattern: steady climb with a gentle S-shaped horizontal drift. */
@@ -93,9 +96,20 @@ export const GUNS: Record<GunId, GunDef> = {
     pattern: [[3.2, 0.4]], recoilJitter: 0.4, firstShotKick: 1, adsRecoilMul: 0.9,
     zoom: 6, scope: true, drawTime: 0.6,
   },
+  shotgun: {
+    id: 'shotgun', name: 'BRUISER 12', ammo: 'shells', sprintMult: 1, damage: 19, headMult: 1.5, limbMult: 0.85, falloff: [7, 24], minDamageMul: 0.2,
+    rpm: 72, auto: false, mag: 6, reserve: 36, reload: 2.4, reloadEmpty: 3.0,
+    hipSpread: 0.6 * DEG, adsSpread: 0.3 * DEG, moveSpread: 0.6 * DEG, bloomPerShot: 0, bloomMax: 0,
+    adsTime: 0.22, sprintToFire: 0.14, moveMult: 1, bulletVel: 0, penetration: 0.08,
+    pattern: [[4.2, 0.5]], recoilJitter: 0.9, firstShotKick: 1, adsRecoilMul: 0.85,
+    zoom: 1.2, scope: false, drawTime: 0.4, pellets: 8, pelletSpread: 3.6 * DEG,
+  },
 };
 
-export const LOADOUT: GunId[] = ['ar', 'smg', 'sniper'];
+export const LOADOUT: GunId[] = ['ar', 'smg', 'sniper', 'shotgun'];
+/** Every gun and ammo type (loot rolls pick from these). */
+export const GUN_IDS: GunId[] = ['ar', 'smg', 'sniper', 'shotgun'];
+export const AMMO_TYPES: AmmoType[] = ['rifle', 'smg', 'sniper', 'shells'];
 
 /** Bare hands: no gun to carry, so you move faster. Left click punches. */
 export const HANDS: GunDef = {
@@ -108,9 +122,9 @@ export const HANDS: GunDef = {
 export const MELEE_RANGE = 2.1;
 
 /** Most ammo you can carry of each type, and how much one ammo box holds. */
-export const AMMO_MAX: Record<AmmoType, number> = { rifle: 240, smg: 256, sniper: 30 };
-export const AMMO_BOX: Record<AmmoType, number> = { rifle: 60, smg: 64, sniper: 10 };
-export const AMMO_NAME: Record<AmmoType, string> = { rifle: 'Rifle ammo', smg: 'SMG ammo', sniper: 'Sniper ammo' };
+export const AMMO_MAX: Record<AmmoType, number> = { rifle: 240, smg: 256, sniper: 30, shells: 42 };
+export const AMMO_BOX: Record<AmmoType, number> = { rifle: 60, smg: 64, sniper: 10, shells: 12 };
+export const AMMO_NAME: Record<AmmoType, string> = { rifle: 'Rifle ammo', smg: 'SMG ammo', sniper: 'Sniper ammo', shells: 'Shotgun shells' };
 
 /** Grey → gold. Better rarity = more damage and less recoil, and the gun's furniture takes the rarity colour. */
 export type Rarity = 0 | 1 | 2 | 3 | 4;

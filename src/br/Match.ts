@@ -3,7 +3,7 @@ import { clamp, damp } from '../core/math';
 import type { Game } from '../Game';
 import { BotAI, HEARING } from '../ai/BotAI';
 import type { Bot } from '../targets/Targets';
-import { AMMO_BOX, AMMO_MAX, GUNS, type AmmoType, type GunId } from '../weapons/defs';
+import { AMMO_BOX, AMMO_MAX, AMMO_NAME, AMMO_TYPES, GUN_IDS, GUNS, type AmmoType } from '../weapons/defs';
 import { Loot, rollRarity, type BuyStation, type Focus, type LootItem } from './Loot';
 import { Minimap } from './Minimap';
 import { Plane } from './Plane';
@@ -286,7 +286,7 @@ export class Match {
       it.amount -= n;
       if (it.amount <= 0) it.taken = true;
       g.sfx.pickup();
-      g.hud.info(`+${n} ${it.ammo === 'rifle' ? 'rifle' : it.ammo === 'smg' ? 'SMG' : 'sniper'} ammo`, '');
+      g.hud.info(`+${n} ${AMMO_NAME[it.ammo!]}`, '');
     } else if (it.kind === 'plate') {
       const n = Math.min(it.amount, MAX_PLATES - this.plates);
       if (n <= 0) { if (!auto) g.sfx.denied(); return; }
@@ -308,8 +308,8 @@ export class Match {
   private openSupply(box: { pos: Vector3; opened: boolean }) {
     box.opened = true;
     this.stats.boxes++;
-    const rnd = Math.random, gun = (['ar', 'smg', 'sniper'] as GunId[])[Math.floor(rnd() * 3)];
-    const other = (['rifle', 'smg', 'sniper'] as AmmoType[])[Math.floor(rnd() * 3)];
+    const rnd = Math.random, gun = GUN_IDS[Math.floor(rnd() * GUN_IDS.length)];
+    const other = AMMO_TYPES[Math.floor(rnd() * AMMO_TYPES.length)];
     this.loot.spill(box.pos, [
       { kind: 'gun', gun, rarity: rollRarity(rnd, 2), amount: GUNS[gun].mag },
       { kind: 'ammo', ammo: Loot.ammoFor(gun), rarity: 0, amount: AMMO_BOX[Loot.ammoFor(gun)] },
@@ -348,7 +348,7 @@ export class Match {
     } else if (i === 1) {
       for (const k of Object.keys(AMMO_MAX) as AmmoType[]) g.weapons.addAmmo(k, AMMO_MAX[k]);
     } else {
-      const gun = (['ar', 'smg', 'sniper'] as GunId[])[Math.floor(Math.random() * 3)];
+      const gun = GUN_IDS[Math.floor(Math.random() * GUN_IDS.length)];
       const s = this.loot.spawnGun(g.player.pos.clone(), gun, i === 2 ? 3 : 4);
       this.take(s, false);
     }
@@ -404,7 +404,7 @@ export class Match {
     if (this.hp > 0 && left > 1 && left <= 3) this.g.hud.feed(`<b>${left} players left</b>`);
     const specs: Omit<LootItem, 'pos' | 'obj' | 'vel' | 't' | 'taken'>[] = [
       { kind: 'cash', rarity: 4, amount: 100 * Math.round(3 + rnd() * 4) },
-      { kind: 'ammo', ammo: (['rifle', 'smg', 'sniper'] as AmmoType[])[Math.floor(rnd() * 3)], rarity: 0, amount: 0 },
+      { kind: 'ammo', ammo: AMMO_TYPES[Math.floor(rnd() * AMMO_TYPES.length)], rarity: 0, amount: 0 },
     ];
     specs[1].amount = AMMO_BOX[specs[1].ammo!];
     if (rnd() < 0.6) specs.push({ kind: 'plate', rarity: 2, amount: 1 });

@@ -17,6 +17,8 @@ export interface BallisticsHooks {
   impact(p: Vector3, n: Vector3, surface: Surface, exit: boolean): void;
   hit(target: Target, zone: Zone, gun: GunDef, dmgMul: number, dist: number, p: Vector3, dir: Vector3, wallbang: boolean): void;
   tracer(from: Vector3, to: Vector3, bullet: boolean): void;
+  /** A shotgun shell's pellets start (true) and end (false): hits in between count as one for feedback. */
+  volley?(on: boolean): void;
 }
 
 interface Bullet {
@@ -63,6 +65,8 @@ export class Ballistics {
     }
     if (this.step(b, INSTANT)) this.list.push(b);
   }
+
+  volley(on: boolean) { this.hooks.volley?.(on); }
 
   update(dt: number) {
     for (let i = this.list.length - 1; i >= 0; i--) if (!this.step(this.list[i], dt)) this.list.splice(i, 1);

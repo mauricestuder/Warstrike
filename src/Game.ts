@@ -19,6 +19,12 @@ import type { World } from './world/World';
 
 export type MapId = 'range' | 'town' | 'br';
 
+/** What one hit did, for the marker, sound and readout. */
+interface HitFeedback {
+  zone: Zone; dealt: number; head: boolean; killed: boolean; armorBroke: boolean; steel: boolean;
+  dist: number; p: Vector3; dir: Vector3; wallbang: boolean;
+}
+
 /** Wires everything together and runs the frame: input → movement → weapons → bullets → camera → render. */
 export class Game {
   readonly renderer: Renderer;
@@ -66,6 +72,7 @@ export class Game {
       impact: (p, n, s, exit) => { this.fx.impact(p, n, s); void exit; },
       hit: (t, zone, gun, mul, dist, p, dir, wb) => this.onHit(t, zone, gun, mul, dist, p, dir, wb),
       tracer: (a, b, bullet) => this.fx.tracer(a, b, bullet ? 0.016 : 0.01, bullet ? 0.035 : 0.04),
+      volley: (on) => this.volley(on),
     });
     this.vm = new ViewModel(this.renderer.vmScene);
     this.weapons = new Weapons(this.player, this.vm, this.ballistics, this.sfx, this.hud, this.fx);
@@ -104,6 +111,16 @@ export class Game {
     return true;
   };
 
+  /** Shotgun pellets in flight: hits are summed per target and shown once when the shell is done. */
+  private pellets: Map<Target, HitFeedback> | null = null;
+
+  private volley(on: boolean) {
+    if (on) { this.pellets = new Map(); return; }
+    const hits = this.pellets;
+    this.pellets = null;
+    for (const h of hits?.values() ?? []) this.hitFeedback(h);
+  }
+
   private onHit(t: Target, zone: Zone, gun: GunDef, mul: number, dist: number, p: Vector3, dir: Vector3, wallbang: boolean) {
     const zoneMul = zone === 'head' ? gun.headMult : zone === 'limb' ? gun.limbMult : 1;
     const dmg = gun.damage * falloffMul(gun, dist) * zoneMul * mul;
@@ -111,6 +128,28 @@ export class Game {
     const head = zone === 'head';
     this.log.push({ zone, dmg: r.dealt, dist, wallbang, steel: r.steel });
     if (this.log.length > 50) this.log.shift();
+    if (!r.steel) {
+      this.fx.blood(p, dir, head);
+      this.match?.onHit(r.dealt);
+      if (t instanceof Bot && !r.killed) this.match?.botHit(t);
+      if (r.killed && t instanceof Bot) this.match?.botDown(t, dist, head);
+    }
+    const h: HitFeedback = { zone, dealt: r.dealt, head, killed: r.killed, armorBroke: r.armorBroke, steel: r.steel, dist, p, dir, wallbang };
+    const sum = this.pellets?.get(t);
+    if (sum) {
+      sum.dealt += h.dealt;
+      sum.head ||= h.head;
+      sum.killed ||= h.killed;
+      sum.armorBroke ||= h.armorBroke;
+      sum.wallbang &&= h.wallbang;
+      if (h.zone === 'head' || sum.zone === 'limb') sum.zone = h.zone;
+    } else if (this.pellets) this.pellets.set(t, h);
+    else this.hitFeedback(h);
+  }
+
+  /** Hit marker, sound, damage number and readout for one hit (or one shotgun shell's worth). */
+  private hitFeedback(r: HitFeedback) {
+    const { zone, head, dist, p, dir, wallbang } = r;
     const m = `${Math.round(dist)} m`;
     if (r.steel) {
       // The ding arrives after the sound travels back; the marker is instant so you know you connected.
@@ -120,11 +159,7 @@ export class Game {
       this.fx.impact(p, dir.clone().negate(), 'steel');
       return;
     }
-    this.fx.blood(p, dir, head);
     this.hud.damageNumber(p, r.dealt, head);
-    this.match?.onHit(r.dealt);
-    if (t instanceof Bot && !r.killed) this.match?.botHit(t);
-    if (r.killed && t instanceof Bot) this.match?.botDown(t, dist, head);
     if (r.killed) {
       this.hud.hit('kill');
       this.sfx.kill();
@@ -203,7 +238,7 @@ export class Game {
 
     // --- HUD ---
     const crossVis = w.scoped || p.sprinting || plane || sky ? 0 : (w.onHands ? 0.6 : 1) * (1 - w.ads) * (1 - w.lower);
-    this.hud.crosshair(w.spread, this.fov, crossVis, dt);
+    this.hud.crosshair(w.crosshairSpread, this.fov, crossVis, dt);
     this.hud.setScope(w.scoped);
     this.hud.setMove(p.horizSpeed, p.mantling ? 'mantle' : p.tacSprinting ? 'tac sprint' : p.sprinting ? 'sprint' : p.stance, p.lastSlide);
     this.hud.setTac(p.tacFraction, p.tacSprinting);
