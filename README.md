@@ -1,7 +1,7 @@
 # WARSTRIKE
 
 A browser FPS built from scratch with **Three.js + TypeScript**, taking inspiration from Warzone's gunplay and Blood Strike's pace.
-The long-term goal is a big battle royale. Build 0.3 has a first **battle royale mode** on Harbor Outskirts, a **gun range** for dialling in movement and gunplay, and **free roam** on Harbor Outskirts.
+The long-term goal is a big battle royale. Build 0.4 has a **battle royale mode** on Harbor Outskirts with bots that fight back, a **gun range** for dialling in movement and gunplay, and **free roam** on Harbor Outskirts.
 
 ## Play
 
@@ -16,7 +16,32 @@ Or build a single self-contained file you can double-click or send to a friend:
 npm run share      # → Warstrike.html (no server needed)
 ```
 
-## What's new in build 0.3
+## What's new in build 0.4
+
+**The bots fight back** (battle royale):
+- **They drop in with you.** Every bot jumps from the plane at its own moment, skydives and parachutes toward a loot-rich spot, spread out from the others.
+- **They loot.** A fresh bot runs to the nearest gun and picks it up (it's gone for you), and later swaps for better rarities. You can see the gun in its hands.
+- **They move like you.** Bots use your own movement code (they step up stairs, jump and mantle), with a navigation grid and path finding to get around the town.
+- **They see and hear.** Bots have a field of view and a sight range and need a clear line of sight. Crouching makes you harder to spot. Gunfire draws nearby bots to come and look.
+- **They fight.** Bots react after a short delay and strafe while shooting. They keep the range their gun likes and fire in bursts.
+  - Their aim starts loose and tightens as they track you. It gets worse when you move fast.
+  - Snipers plant their feet to take the shot.
+  - Bots reload, back off to cover to heal when they're hurt, and hunt you where they last saw you.
+  - Without a gun they rush in and punch.
+- **Fairness:**
+  - Every bot has its own skill level.
+  - Only two bots fight you at a time, unless you shoot the others.
+  - Bots ignore each other while they loot after landing.
+- **They fight each other**, so the kill feed fills with "Ghost_77 eliminated Reyes". They also move into the circle and die in the gas.
+- When a bot dies, it drops the gun it was carrying.
+- **Feedback when you're shot at:**
+  - Each bot shot leaves a tracer, and their shots sound from where they are (panned, muffled and delayed with distance).
+  - Bullets crack past your head when they miss.
+  - A red arc points at whoever hit you, and footsteps sound nearby.
+  - Gunfire near you shows as red dots on the minimap.
+- Losing by a bot shows "ELIMINATED BY <name>" on the end screen.
+
+## What came in build 0.3
 
 **Battle royale** (menu → BATTLE ROYALE):
 - **Plane drop:** a transport plane crosses the map on a random line. Jump from the rear ramp with Space, or get thrown out at the far edge.
@@ -44,7 +69,7 @@ npm run share      # → Warstrike.html (no server needed)
   | Random Epic gun | $2,500 |
   | Random Legendary gun | $4,500 |
 
-- **12 bots** are spread around the map. They stay down when killed and drop cash, ammo, sometimes a plate or a gun. The gas takes them too.
+- **12 bots** (see build 0.4 above for how they play). They stay down when killed and drop cash, ammo, sometimes a plate, and their gun.
 - **Last one standing wins.** The Victory or Eliminated screen shows your placement, kills, damage, time survived, cash, items looted and longest kill.
 - **HUD:**
   - armour, health, plates and cash;
@@ -140,6 +165,7 @@ src/
   world/             box colliders, the World interface, the geometry Builder (merges static meshes), the range
   world/town/        Harbor Outskirts: materials, props, buildings, port, vegetation, layout
   br/                battle royale: match flow, loot and buy stations, gas zone, drop plane, minimap
+  ai/                bot navigation grid + A* path finding, and the bot brains (drop, loot, roam, fight)
   player/            movement: sprint, crouch, slide, mantle
   weapons/           gun stats, firing, recoil, ballistics, first-person view models
   targets/           steel plates and bots

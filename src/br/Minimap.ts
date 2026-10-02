@@ -11,6 +11,8 @@ export interface MapMarks {
   plane: { from: Vector3; to: Vector3; pos: Vector3 } | null;
   boxes: Vector3[];
   stations: Vector3[];
+  /** Unsuppressed gunfire nearby: red dots. */
+  pings: { pos: Vector3; life: number }[];
 }
 
 /**
@@ -103,6 +105,14 @@ export class Minimap {
     };
     for (const b of m.boxes) icon(b, '#ffc040', '▣');
     for (const s of m.stations) icon(s, '#8fe08a', '$');
+    for (const p of m.pings) {
+      ctx.globalAlpha = Math.min(1, p.life);
+      ctx.fillStyle = '#ff3b30';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(sx(p.pos.x), sy(p.pos.z), Math.max(4, W / 70), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
     // You (or the plane).
     const me = m.plane ? m.plane.pos : m.player;
     ctx.save();

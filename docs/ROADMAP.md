@@ -21,8 +21,13 @@ Each session builds on the last. Movement and gunplay come first, because everyt
 - Buy stations, kill feed, and victory / eliminated screens with a match summary.
 - Fists (run faster, punch), faster movement and a shorter gun echo.
 
-## Session 2b: Bots that fight back, a bigger map
-- Bots that drop in, loot, move, take cover, peek, shoot back and push.
+## ✅ Session 2b part 1: Bots that fight back (build 0.4)
+- Bots drop from the plane, loot guns, find paths around the town, follow the circle, hear gunfire, and fight with strafing, bursts, reloads, cover and hunting.
+- They fight each other too. Only two take you on at once.
+- Positional gunfire, near-miss cracks, a hit-direction indicator and minimap gunfire pings.
+
+## Session 2b part 2: A bigger map
+- Bots that use the upper floors and peek corners; vegetation that blocks their sight.
 - Downs and self-revive.
 - Grow the map outward: an old town centre, a farm, a hill with radio towers, and a river.
 

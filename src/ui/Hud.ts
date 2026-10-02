@@ -129,6 +129,15 @@ export class Hud {
     if (this.aliveEl.innerHTML !== t) this.aliveEl.innerHTML = t;
   }
 
+  /** A red arc around the crosshair pointing at whoever just shot you (angle: 0 ahead, positive to the right). */
+  hitFrom(angle: number) {
+    const el = document.createElement('div');
+    el.className = 'dmgdir';
+    el.style.transform = `translate(-50%, -50%) rotate(${angle}rad)`;
+    this.hurtEl.parentElement!.appendChild(el);
+    setTimeout(() => el.remove(), 1300);
+  }
+
   hurt() {
     this.hurtEl.classList.remove('show');
     void this.hurtEl.offsetWidth;

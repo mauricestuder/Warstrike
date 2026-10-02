@@ -217,7 +217,7 @@ export class Loot {
     return [...by].map(([mat, geos]) => ({ geo: mergeGeometries(geos)!, mat: this.worldMat(mat) }));
   }
 
-  private gunModel(id: GunId, rarity: Rarity) {
+  gunModel(id: GunId, rarity: Rarity) {
     const key = `${id}:${rarity}`;
     let parts = this.gunParts.get(key);
     if (!parts) {

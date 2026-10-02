@@ -73,7 +73,10 @@ export class Game {
     this.weapons.refill();
     this.weapons.melee = this.melee;
     this.hud.setMode(false);
-    if (map === 'br') this.match = new Match(this);
+    if (map === 'br') {
+      this.match = new Match(this);
+      this.weapons.onShot = () => this.match?.playerShot();
+    }
     this.applySettings();
     requestAnimationFrame(() => this.frame());
   }
@@ -85,7 +88,7 @@ export class Game {
 
   get welcome() {
     return this.match
-      ? 'Battle royale · SPACE to jump from the plane · loot guns with F · plate up with 4 · M for the map · last one standing wins'
+      ? 'Battle royale · SPACE to jump from the plane · loot guns with F · plate up with 4 · M for the map · 12 bots drop with you and shoot back · last one standing wins'
       : this.world.welcome;
   }
 
@@ -120,6 +123,7 @@ export class Game {
     this.fx.blood(p, dir, head);
     this.hud.damageNumber(p, r.dealt, head);
     this.match?.onHit(r.dealt);
+    if (t instanceof Bot && !r.killed) this.match?.botHit(t);
     if (r.killed && t instanceof Bot) this.match?.botDown(t, dist, head);
     if (r.killed) {
       this.hud.hit('kill');

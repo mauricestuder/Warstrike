@@ -1,6 +1,6 @@
 import {
-  BoxGeometry, CanvasTexture, CapsuleGeometry, CylinderGeometry, Group, Mesh, MeshStandardMaterial, SphereGeometry,
-  Sprite, SpriteMaterial, SRGBColorSpace, Vector3,
+  BoxGeometry, BufferGeometry, CanvasTexture, CapsuleGeometry, CylinderGeometry, DoubleSide, Group, Mesh, MeshStandardMaterial,
+  SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, Vector3, type Material,
 } from 'three';
 import { clamp, rand } from '../core/math';
 import type { Renderer } from '../render/Renderer';
@@ -105,6 +105,24 @@ export class Bot implements Target {
   /** Battle royale: bots stay down when killed. */
   respawn = true;
   name = 'Bot';
+  /** Moved and turned by an AI brain instead of the training-lane logic. */
+  driven = false;
+  /** Not in the world yet (still on the plane). */
+  hidden = false;
+  /** Facing (driven bots); 0 looks toward +z. */
+  yaw = 0;
+  /** Walking speed in m/s, for the stride animation. */
+  moveSpeed = 0;
+  /** Parachute open (driven bots). */
+  chute = false;
+  /** Seconds since the last damage, for regen. */
+  sinceHit = 99;
+  private legs: Group[] = [];
+  private arms: Mesh[] = [];
+  private gunHolder = new Group();
+  private canopy: Group;
+  private stride = 0;
+  private armed = false;
   private root = new Group();
   private body = new Group();
   private hp = MAX_HP;
@@ -113,7 +131,6 @@ export class Bot implements Target {
   private dir = 1;
   private dirTimer = 0;
   private speed = 0;
-  private yaw = 0;
   private bar: Sprite;
   private barCtx: CanvasRenderingContext2D;
   private barTex: CanvasTexture;
@@ -137,10 +154,20 @@ export class Bot implements Target {
       return mesh;
     };
     for (const s of [-1, 1]) {
-      add(new CapsuleGeometry(0.1, 0.72, 4, 8), fabric, s * 0.11, 0.5, 0);
-      add(new BoxGeometry(0.14, 0.1, 0.26), boots, s * 0.11, 0.05, -0.04);
+      // Each leg hangs from a hip pivot so it can swing when walking.
+      const hip = new Group();
+      hip.position.set(s * 0.11, 0.9, 0);
+      this.body.add(hip);
+      const leg = new Mesh(new CapsuleGeometry(0.1, 0.72, 4, 8), fabric);
+      leg.position.y = -0.4;
+      const boot = new Mesh(new BoxGeometry(0.14, 0.1, 0.26), boots);
+      boot.position.set(0, -0.85, 0.04);
+      leg.castShadow = boot.castShadow = true;
+      hip.add(leg, boot);
+      this.legs.push(hip);
       const arm = add(new CapsuleGeometry(0.07, 0.5, 4, 8), fabric, s * 0.31, 1.2, 0);
       arm.rotation.z = s * 0.12;
+      this.arms.push(arm);
     }
     add(new CapsuleGeometry(0.2, 0.42, 4, 12), fabric, 0, 1.22, 0).scale.set(1, 1, 0.7);
     add(new BoxGeometry(0.44, 0.44, 0.3), vest, 0, 1.24, 0);
@@ -148,6 +175,26 @@ export class Bot implements Target {
     add(new SphereGeometry(0.12, 16, 12), skin, 0, 1.64, 0);
     add(new SphereGeometry(0.135, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), helmet, 0, 1.66, 0);
     this.root.add(this.body);
+    this.gunHolder.position.set(0.12, 1.22, 0.32);
+    this.body.add(this.gunHolder);
+    // Parachute: a domed canopy on four lines.
+    this.canopy = new Group();
+    const cloth = mat(0x5d6b4a, 0.9);
+    cloth.side = DoubleSide;
+    const dome = new Mesh(new SphereGeometry(2.2, 16, 6, 0, Math.PI * 2, 0, Math.PI * 0.32), cloth);
+    dome.scale.set(1, 0.55, 0.75);
+    dome.position.y = 2.4;
+    this.canopy.add(dome);
+    const line = mat(0x222222);
+    for (const [x, z] of [[-1, -0.6], [1, -0.6], [-1, 0.6], [1, 0.6]]) {
+      const l = new Mesh(new CylinderGeometry(0.008, 0.008, 2.6, 3), line);
+      l.position.set(x * 0.6, 3.0, z * 0.45);
+      l.rotation.set(-z * 0.3, 0, x * 0.42);
+      this.canopy.add(l);
+    }
+    this.canopy.position.y = 1.4;
+    this.canopy.visible = false;
+    this.root.add(this.canopy);
 
     const c = document.createElement('canvas');
     c.width = 128; c.height = 20;
@@ -175,7 +222,7 @@ export class Bot implements Target {
   }
 
   raycast(o: Vector3, d: Vector3, maxT: number): TargetRay | null {
-    if (this.dead > 0) return null;
+    if (this.dead > 0 || this.hidden || this.hp <= 0) return null;
     // Transform the ray into the bot's local (unrotated) frame.
     const c = Math.cos(-this.yaw), s = Math.sin(-this.yaw);
     const lx = o.x - this.position.x, lz = o.z - this.position.z;
@@ -197,6 +244,37 @@ export class Bot implements Target {
   }
 
   get alive() { return this.dead <= 0 && this.hp > 0; }
+  /** Health plus armour, 0..150. */
+  get total() { return this.hp + this.armor; }
+  get health() { return this.hp; }
+
+  /** Regenerates health (not armour), like the player. */
+  heal(amount: number) {
+    if (!this.alive || this.hp >= MAX_HP) return;
+    this.hp = Math.min(MAX_HP, this.hp + amount);
+    this.drawBar();
+  }
+
+  /** Puts a gun model in the bot's hands (or empties them). */
+  holdGun(parts: { geo: BufferGeometry; mat: Material }[] | null) {
+    this.gunHolder.clear();
+    this.armed = !!parts;
+    if (!parts) return;
+    const g = new Group();
+    for (const p of parts) { const m = new Mesh(p.geo, p.mat); m.castShadow = true; g.add(m); }
+    // Loot models point down -z; the bot looks down +z.
+    g.rotation.y = Math.PI;
+    this.gunHolder.add(g);
+  }
+
+  /** World-space muzzle position (roughly the end of the barrel). */
+  muzzle(out: Vector3) {
+    const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
+    return out.set(this.position.x + c * 0.12 + s * 0.85, this.position.y + 1.3, this.position.z - s * 0.12 + c * 0.85);
+  }
+
+  /** Eye position, where the bot looks and shoots from. */
+  eye(out: Vector3) { return out.set(this.position.x, this.position.y + 1.6, this.position.z); }
 
   /** Gas ignores armour. */
   gas(amount: number): boolean {
@@ -220,6 +298,7 @@ export class Bot implements Target {
     const dealt = amount - Math.max(0, left - this.hp);
     this.hp -= left;
     this.flash = 0.08;
+    this.sinceHit = 0;
     const killed = this.hp <= 0;
     if (killed) { this.hp = 0; this.dead = 3; }
     this.drawBar();
@@ -227,13 +306,18 @@ export class Bot implements Target {
   }
 
   update(dt: number, viewer: Vector3) {
+    this.root.visible = !this.hidden;
+    if (this.hidden) return;
     if (this.hp <= 0 && !this.respawn) {
       // Stays where it fell.
+      this.root.position.copy(this.position);
       this.body.rotation.x = Math.max(this.body.rotation.x - dt * 5, -Math.PI / 2);
       this.bar.visible = false;
+      this.canopy.visible = false;
       for (const m of this.mats) m.emissive.setRGB(0, 0, 0);
       return;
     }
+    this.sinceHit += dt;
     if (this.dead > 0) {
       this.dead -= dt;
       // Topple backwards, then respawn.
@@ -248,7 +332,7 @@ export class Bot implements Target {
       }
       return;
     }
-    if (this.lane) {
+    if (this.lane && !this.driven) {
       this.dirTimer -= dt;
       if (this.dirTimer <= 0) {
         this.dir = Math.random() < 0.5 ? -1 : 1;
@@ -260,9 +344,22 @@ export class Bot implements Target {
       this.speed += (this.dir * 4.4 - this.speed) * clamp(dt * 9, 0, 1);
       this.position.x += this.speed * dt;
     }
-    this.yaw = Math.atan2(viewer.x - this.position.x, viewer.z - this.position.z);
+    if (!this.driven) this.yaw = Math.atan2(viewer.x - this.position.x, viewer.z - this.position.z);
     this.root.position.copy(this.position);
     this.root.rotation.y = this.yaw;
+    // Stride: legs swing with distance walked; arms come up to hold a gun.
+    this.stride += this.moveSpeed * dt * 2.3;
+    const swing = Math.min(1, this.moveSpeed / 4) * 0.55 * Math.sin(this.stride);
+    this.legs[0].rotation.x = swing;
+    this.legs[1].rotation.x = -swing;
+    for (let i = 0; i < 2; i++) {
+      const a = this.arms[i];
+      a.rotation.x = this.armed ? -1.25 : -swing * (i ? 1 : -1) * 0.6;
+      a.position.z = this.armed ? 0.2 : 0;
+      a.position.x = (i ? 1 : -1) * (this.armed ? 0.2 : 0.31);
+    }
+    this.canopy.visible = this.chute;
+    this.bar.visible = !this.chute && (this.respawn || this.sinceHit < 4);
     // Brief red flash on hit.
     if (this.flash > 0) this.flash -= dt;
     for (const m of this.mats) m.emissive.setRGB(this.flash > 0 ? 0.6 : 0, 0, 0);

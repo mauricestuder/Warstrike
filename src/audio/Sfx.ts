@@ -1,3 +1,4 @@
+import type { Vector3 } from 'three';
 import type { GunId } from '../weapons/defs';
 
 const SPEED_OF_SOUND = 343;
@@ -273,6 +274,73 @@ export class Sfx {
       this.burst(t + 0.55, 0.05, 'bandpass', 2500, 4, 0.35);
       this.burst(t + 0.72, 0.06, 'bandpass', 1900, 4, 0.4);
     }
+  }
+
+  /**
+   * Routes a sound from a point in the world: quieter and duller with distance, panned left/right, and arriving late
+   * (sound travels 343 m/s). Distant sounds lean on the echo. Returns the node to feed, or null when out of earshot.
+   */
+  private spatial(pos: Vector3, ear: Vector3, yaw: number, gain: number, maxDist: number): AudioNode | null {
+    const ctx = this.ctx!, d = pos.distanceTo(ear);
+    if (d > maxDist) return null;
+    const dx = pos.x - ear.x, dz = pos.z - ear.z;
+    // Right of the listener is (cos yaw, -sin yaw) when forward is (-sin yaw, -cos yaw).
+    const side = d > 0.01 ? (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / Math.max(d, 1) : 0;
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = Math.max(-0.85, Math.min(0.85, side));
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = Math.max(700, 18000 / (1 + d / 18));
+    const g = ctx.createGain();
+    g.gain.value = gain / (1 + d / 14);
+    const delay = ctx.createDelay(1.5);
+    delay.delayTime.value = Math.min(1.4, d / 343);
+    const send = ctx.createGain();
+    send.gain.value = Math.min(0.9, 0.25 + d / 160) * gain;
+    delay.connect(lp).connect(g).connect(pan).connect(this.master);
+    lp.connect(send).connect(this.echoIn);
+    return delay;
+  }
+
+  /** Someone else's gunshot. */
+  shotAt(id: GunId, pos: Vector3, ear: Vector3, yaw: number) {
+    if (!this.ok) return;
+    const ctx = this.ctx!, dest = this.spatial(pos, ear, yaw, id === 'sniper' ? 1 : id === 'smg' ? 0.7 : 0.8, 400);
+    if (!dest) return;
+    const src = ctx.createBufferSource();
+    src.buffer = this.shots[id][Math.floor(Math.random() * this.shots[id].length)];
+    src.playbackRate.value = 0.95 + Math.random() * 0.06;
+    src.connect(dest);
+    src.start(ctx.currentTime);
+  }
+
+  /** A bullet snapping past your head. */
+  whiz(side: number) {
+    if (!this.ok) return;
+    const ctx = this.ctx!, t = ctx.currentTime;
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = Math.max(-0.9, Math.min(0.9, side));
+    pan.connect(this.master);
+    this.burst(t, 0.09, 'bandpass', 5200, 2.5, 0.5, 0.004, 1800, pan);
+    this.burst(t, 0.03, 'highpass', 6000, 1, 0.25, 0.001, undefined, pan);
+  }
+
+  /** Someone else's footstep. */
+  stepAt(pos: Vector3, ear: Vector3, yaw: number, sprint: boolean) {
+    if (!this.ok) return;
+    const dest = this.spatial(pos, ear, yaw, sprint ? 0.9 : 0.6, 35);
+    if (!dest) return;
+    const t = this.ctx!.currentTime;
+    this.burst(t, 0.07, 'lowpass', 900, 0.8, 0.5, 0.004, undefined, dest);
+    this.burst(t + 0.01, 0.03, 'bandpass', 2600, 2, 0.12, 0.002, undefined, dest);
+  }
+
+  /** Someone else's punch landing. */
+  punchAt(pos: Vector3, ear: Vector3, yaw: number) {
+    if (!this.ok) return;
+    const dest = this.spatial(pos, ear, yaw, 1, 30);
+    if (!dest) return;
+    this.burst(this.ctx!.currentTime, 0.08, 'lowpass', 500, 1, 0.8, 0.002, undefined, dest);
   }
 
   dryFire() {

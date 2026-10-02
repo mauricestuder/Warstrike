@@ -40,6 +40,8 @@ export class Weapons {
   hidden = false;
   /** Punch hit test, wired up by the game. Returns true if something was hit. */
   melee: (dir: Vector3) => boolean = () => false;
+  /** Called on every shot you fire (bots hear it). */
+  onShot: () => void = () => {};
   private punchCd = 0;
   private punchPending = -1;
   ads = 0;
@@ -305,6 +307,7 @@ export class Weapons {
     this.ballistics.fire(camera.position, dir, d, muzzle);
     this.fx.muzzle(muzzle);
     this.sfx.shot(g.base as GunId);
+    this.onShot();
 
     // Recoil: follow the gun's pattern, then loop its last third.
     const pat = d.pattern;

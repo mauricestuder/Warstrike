@@ -1,5 +1,4 @@
 import { Vector3 } from 'three';
-import type { Input } from '../core/Input';
 import { clamp, damp } from '../core/math';
 import type { Colliders } from '../world/Colliders';
 
@@ -14,6 +13,12 @@ const RADIUS = 0.3, STAND_H = 1.8, CROUCH_H = 1.15, SLIDE_H = 0.95;
 const STEP = 0.45, MANTLE_MAX = 2.05, MANTLE_MIN = 0.4;
 const EYE_STAND = 1.64, EYE_CROUCH = 1.08, EYE_SLIDE = 0.82;
 const SUBSTEP = 1 / 120;
+
+/** What movement reads from the keyboard (the real Input, or a bot's virtual one). */
+export interface Controls {
+  isDown(code: string): boolean;
+  wasPressed(code: string): boolean;
+}
 
 export type Stance = 'stand' | 'crouch' | 'slide';
 /** Dropping from the plane: freefall first, then the parachute. */
@@ -94,7 +99,7 @@ export class Player {
   get moving() { return this.horizSpeed > 0.5; }
   get tacFraction() { return this.tacLeft / TAC_TIME; }
 
-  update(dt: number, input: Input) {
+  update(dt: number, input: Controls) {
     this.time += dt;
     if (this.skydive !== 'none') { this.updateSky(dt, input); return; }
     const fwdIn = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
@@ -218,7 +223,7 @@ export class Player {
   }
 
   /** Freefall (look down to dive faster) and parachute glide. Lands into normal movement on touchdown. */
-  private updateSky(dt: number, input: Input) {
+  private updateSky(dt: number, input: Controls) {
     const fwdIn = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
     const sideIn = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
     const ground = this.world.groundBelow(this.pos.x, this.pos.z, RADIUS, this.pos.y + 0.01);

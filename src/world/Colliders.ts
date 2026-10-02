@@ -62,13 +62,52 @@ export function boxExit(o: Vector3, d: Vector3, b: Box): number {
   return tmax;
 }
 
+const CELL = 8;
+
 export class Colliders {
   readonly boxes: Box[] = [];
+  /** Uniform grid over the XZ plane (8 m cells) for the movement queries; rebuilt lazily after boxes are added. */
+  private grid = new Map<number, Box[]>();
+  private dirty = true;
+  private stamp = 0;
+  private seen = new WeakMap<Box, number>();
 
   add(min: Vector3, max: Vector3, surface: Surface, clip = false): Box {
     const b: Box = { min: min.clone(), max: max.clone(), surface, clip };
     this.boxes.push(b);
+    this.dirty = true;
     return b;
+  }
+
+  private static key(i: number, j: number) { return (i + 4096) * 8192 + (j + 4096); }
+
+  private rebuild() {
+    this.grid.clear();
+    for (const b of this.boxes) {
+      const i0 = Math.floor(b.min.x / CELL), i1 = Math.floor(b.max.x / CELL), j0 = Math.floor(b.min.z / CELL), j1 = Math.floor(b.max.z / CELL);
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+        const k = Colliders.key(i, j);
+        let c = this.grid.get(k);
+        if (!c) this.grid.set(k, c = []);
+        c.push(b);
+      }
+    }
+    this.dirty = false;
+  }
+
+  /** Calls `fn` once for every box whose grid cells touch the XZ rectangle; stops early when `fn` returns true. */
+  private near(x0: number, z0: number, x1: number, z1: number, fn: (b: Box) => boolean | void) {
+    if (this.dirty) this.rebuild();
+    const i0 = Math.floor(x0 / CELL), i1 = Math.floor(x1 / CELL), j0 = Math.floor(z0 / CELL), j1 = Math.floor(z1 / CELL);
+    const multi = i0 !== i1 || j0 !== j1, s = multi ? ++this.stamp : 0;
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+      const c = this.grid.get(Colliders.key(i, j));
+      if (!c) continue;
+      for (const b of c) {
+        if (multi) { if (this.seen.get(b) === s) continue; this.seen.set(b, s); }
+        if (fn(b)) return;
+      }
+    }
   }
 
   /** Nearest box hit along a normalized ray within maxT. `skip` ignores one box (the one a bullet just exited). */
@@ -87,19 +126,20 @@ export class Colliders {
 
   /** Any box overlapping the AABB [min,max]? */
   overlaps(min: Vector3, max: Vector3): Box | null {
-    for (const b of this.boxes) {
-      if (min.x < b.max.x && max.x > b.min.x && min.y < b.max.y && max.y > b.min.y && min.z < b.max.z && max.z > b.min.z) return b;
-    }
-    return null;
+    let hit: Box | null = null;
+    this.near(min.x, min.z, max.x, max.z, (b) => {
+      if (min.x < b.max.x && max.x > b.min.x && min.y < b.max.y && max.y > b.min.y && min.z < b.max.z && max.z > b.min.z) { hit = b; return true; }
+    });
+    return hit;
   }
 
   /** Highest box top under the column at (x,z) with half-size r, at or below `y`. Returns -Infinity over a void. */
   groundBelow(x: number, z: number, r: number, y: number): number {
     let top = -Infinity;
-    for (const b of this.boxes) {
-      if (x + r <= b.min.x || x - r >= b.max.x || z + r <= b.min.z || z - r >= b.max.z) continue;
+    this.near(x - r, z - r, x + r, z + r, (b) => {
+      if (x + r <= b.min.x || x - r >= b.max.x || z + r <= b.min.z || z - r >= b.max.z) return;
       if (b.max.y <= y + 1e-4 && b.max.y > top) top = b.max.y;
-    }
+    });
     return top;
   }
 }

@@ -158,6 +158,13 @@ body.br #move-box { bottom: 108px; opacity: 0.6; }
 #feed div.out { opacity: 0; }
 #feed b { color: var(--accent); }
 #feed .gas { color: #c7d84a; }
+#feed .other { color: #d6d6d6; }
+.dmgdir { position: absolute; left: 50%; top: 50%; width: 260px; height: 260px; pointer-events: none;
+  animation: dmgdir 1.3s ease-out forwards; }
+.dmgdir::before { content: ''; position: absolute; left: 50%; top: 0; width: 120px; height: 34px; transform: translateX(-50%);
+  border-top: 6px solid rgba(255, 40, 30, 0.95); border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  filter: drop-shadow(0 0 6px rgba(255, 0, 0, 0.8)); }
+@keyframes dmgdir { 0%, 40% { opacity: 1; } 100% { opacity: 0; } }
 
 #zone { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); text-align: center; font-size: 13px; letter-spacing: 0.12em;
   text-shadow: 0 1px 3px #000; padding: 5px 14px; background: rgba(0, 0, 0, 0.35); }

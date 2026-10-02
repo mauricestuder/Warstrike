@@ -1,6 +1,7 @@
 import { Color, Vector2, Vector3, type FogExp2 } from 'three';
 import { clamp, damp } from '../core/math';
 import type { Game } from '../Game';
+import { BotAI, HEARING } from '../ai/BotAI';
 import type { Bot } from '../targets/Targets';
 import { AMMO_BOX, AMMO_MAX, GUNS, type AmmoType, type GunId } from '../weapons/defs';
 import { Loot, rollRarity, type BuyStation, type Focus, type LootItem } from './Loot';
@@ -36,6 +37,9 @@ export class Match {
   readonly loot: Loot;
   readonly zone: Zone;
   readonly plane: Plane;
+  readonly ai: BotAI;
+  /** Who got you (null = the gas). */
+  private killer: string | null = null;
   private map: Minimap;
   private regenWait = 0;
   private plating = -1;
@@ -50,7 +54,7 @@ export class Match {
   private planeGone = false;
   private mini = document.getElementById('minimap') as HTMLCanvasElement;
   private big = document.querySelector('#bigmap canvas') as HTMLCanvasElement;
-  readonly stats = { kills: 0, damage: 0, cash: 0, loot: 0, longest: 0, time: 0, boxes: 0 };
+  readonly stats = { kills: 0, damage: 0, taken: 0, cash: 0, loot: 0, longest: 0, time: 0, boxes: 0 };
   private bounds: { x0: number; x1: number; z0: number; z1: number };
   private center: Vector3;
 
@@ -73,6 +77,7 @@ export class Match {
     this.map.capture(g.renderer, (on) => w.mapView?.(on));
     g.player.area = b;
     for (const bot of g.targets.bots) bot.respawn = false;
+    this.ai = new BotAI(g, this);
     g.weapons.emptyHanded();
     g.weapons.infiniteReserve = false;
     g.hud.setMode(true);
@@ -98,6 +103,7 @@ export class Match {
     if (this.phase === 'over') return;
     this.stats.time += dt;
     this.zone.update(dt);
+    this.ai.update(dt);
     this.loot.update(dt, g.renderer.camera.position);
 
     // --- Plane and drop ---
@@ -131,7 +137,7 @@ export class Match {
       const dps = this.zone.dps;
       if (this.phase !== 'plane' && out > 0) this.damage(dps, true);
       for (const bot of g.targets.bots) {
-        if (bot.alive && this.zone.outside(bot.position.x, bot.position.z) > 0 && bot.gas(dps)) this.botDown(bot, null, false);
+        if (bot.alive && !bot.hidden && this.zone.outside(bot.position.x, bot.position.z) > 0 && bot.gas(dps)) this.botDown(bot, null, false);
       }
     }
     if (out > 0 && this.phase !== 'plane') {
@@ -183,6 +189,7 @@ export class Match {
       player: p.pos, yaw: p.yaw, zone: { c: this.zone.center, r: this.zone.radius },
       next: this.phase === 'plane' ? null : this.zone.next, plane,
       boxes: this.loot.boxes.filter((b) => !b.opened).map((b) => b.pos), stations: this.loot.stations.map((s) => s.pos),
+      pings: this.ai.pings,
     };
   }
 
@@ -352,36 +359,59 @@ export class Match {
 
   // ------------------------------------------------------------------------------------------- damage and kills
 
-  /** Damage to you. Gas skips armour; everything else hits plates first. */
-  damage(amount: number, gas: boolean) {
+  /** Damage to you. Gas skips armour; everything else hits plates first. `by` and `from` say who shot you and from where. */
+  damage(amount: number, gas: boolean, by: string | null = null, from: Vector3 | null = null) {
     if (this.phase === 'over') return;
     let left = amount;
+    const hadArmor = this.armor > 0;
     if (!gas && this.armor > 0) { const a = Math.min(this.armor, left); this.armor -= a; left -= a; }
     this.hp -= left;
     this.regenWait = REGEN_DELAY;
+    this.stats.taken += amount;
     this.g.hud.hurt();
     this.g.sfx.hurt();
-    if (this.hp <= 0) { this.hp = 0; this.end(false); }
+    if (hadArmor && this.armor <= 0 && !gas) { this.g.sfx.armorBreak(); this.g.hud.info('ARMOR BROKEN', 'kill'); }
+    if (from) {
+      // Direction indicator: 0 = straight ahead, positive = to your right.
+      const p = this.g.player, dx = from.x - p.pos.x, dz = from.z - p.pos.z;
+      this.g.hud.hitFrom(Math.atan2(dx * Math.cos(p.yaw) - dz * Math.sin(p.yaw), -dx * Math.sin(p.yaw) - dz * Math.cos(p.yaw)));
+    }
+    if (this.hp <= 0) { this.hp = 0; this.killer = by; this.end(false); }
   }
 
   /** Called by the game for every hit you land. */
   onHit(dealt: number) { this.stats.damage += dealt; }
 
-  /** A bot went down: by you (with distance) or by the gas. Drops what it was carrying. */
-  botDown(bot: Bot, dist: number | null, head: boolean) {
+  /** You hit a bot: it knows where you are now. */
+  botHit(bot: Bot) { this.ai.attacked(bot, 'player'); }
+
+  /** You fired: everyone in earshot hears it (and you show up on nobody's minimap, but they come looking). */
+  playerShot() {
+    const p = this.g.player.pos;
+    this.ai.noise(p, HEARING, 'player');
+  }
+
+  /** A bot went down: by you (with distance), by another bot, or by the gas. Drops what it was carrying. */
+  botDown(bot: Bot, dist: number | null, head: boolean, by: Bot | null = null) {
     const rnd = Math.random;
     if (dist !== null) {
       this.stats.kills++;
       this.stats.longest = Math.max(this.stats.longest, dist);
       this.g.hud.feed(`You eliminated <b>${bot.name}</b>${head ? ' · headshot' : ''} · ${Math.round(dist)} m`);
-    } else this.g.hud.feed(`<span class="gas">${bot.name} was taken by the gas</span>`);
+    } else if (by) this.g.hud.feed(`<span class="other">${by.name} eliminated ${bot.name}${head ? ' · headshot' : ''}</span>`);
+    else this.g.hud.feed(`<span class="gas">${bot.name} was taken by the gas</span>`);
+    const left = this.g.targets.bots.filter((b) => b.alive).length + (this.hp > 0 ? 1 : 0);
+    if (this.hp > 0 && left > 1 && left <= 3) this.g.hud.feed(`<b>${left} players left</b>`);
     const specs: Omit<LootItem, 'pos' | 'obj' | 'vel' | 't' | 'taken'>[] = [
       { kind: 'cash', rarity: 4, amount: 100 * Math.round(3 + rnd() * 4) },
       { kind: 'ammo', ammo: (['rifle', 'smg', 'sniper'] as AmmoType[])[Math.floor(rnd() * 3)], rarity: 0, amount: 0 },
     ];
     specs[1].amount = AMMO_BOX[specs[1].ammo!];
     if (rnd() < 0.6) specs.push({ kind: 'plate', rarity: 2, amount: 1 });
-    if (rnd() < 0.3) { const gun = (['ar', 'smg', 'sniper'] as GunId[])[Math.floor(rnd() * 3)]; specs.push({ kind: 'gun', gun, rarity: rollRarity(rnd, 1), amount: GUNS[gun].mag }); }
+    // The gun it was holding.
+    const held = this.ai.gunOf(bot);
+    if (held) specs.push({ kind: 'gun', gun: held.id, rarity: held.rarity, amount: Math.max(held.mag, Math.ceil(GUNS[held.id].mag / 2)) });
+    this.ai.disarm(bot);
     this.loot.spill(bot.position, specs);
   }
 
@@ -402,7 +432,7 @@ export class Match {
       const el = document.getElementById('end')!;
       el.className = win ? 'win' : 'lose';
       el.innerHTML = `<div class="card"><h1>${win ? 'VICTORY' : 'ELIMINATED'}</h1>
-        <div class="place">#${place} OF ${this.total}${win ? ' · LAST ONE STANDING' : ' · TAKEN BY THE GAS'}</div>
+        <div class="place">#${place} OF ${this.total}${win ? ' · LAST ONE STANDING' : this.killer ? ` · ELIMINATED BY ${this.killer.toUpperCase()}` : ' · TAKEN BY THE GAS'}</div>
         <div class="stats">
           <div><b>${st.kills}</b><span>KILLS</span></div>
           <div><b>${Math.round(st.damage)}</b><span>DAMAGE</span></div>
