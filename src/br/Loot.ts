@@ -176,18 +176,25 @@ export class Loot {
         .sort((a, b) => Math.hypot(a.pos.x - ax, a.pos.z - az) - Math.hypot(b.pos.x - ax, b.pos.z - az))[0];
       if (best) this.addStation(best.pos, rnd() * Math.PI * 2);
     }
-    // Supply boxes: half indoors, half out.
+    // Supply boxes, indoors and out, spread around the whole map.
     const boxSpots = Loot.spread(spots.filter((s) => this.clear(s.pos, 1.6, 1.0, 1.6)
-      && !this.stations.some((st) => st.pos.distanceTo(s.pos) < 6)), rnd, 40, 40, 9);
+      && !this.stations.some((st) => st.pos.distanceTo(s.pos) < 6)), rnd, 22, 22, 22);
     for (const s of boxSpots) this.addSupply(s.pos, Math.round(rnd() * 4) * Math.PI / 2 + (rnd() - 0.5) * 0.3);
     // Floor loot.
     const used = (p: Vector3) => this.boxes.some((b) => b.pos.distanceTo(p) < 2) || this.stations.some((s) => s.pos.distanceTo(p) < 2.5);
-    const floor = Loot.spread(spots.filter((s) => !used(s.pos)), rnd, 5, 14, 120);
+    const floor = Loot.spread(spots.filter((s) => !used(s.pos)), rnd, 4, 9, 230);
     for (const s of floor) {
       const k = rnd();
-      if (k < 0.32) this.spawnGun(s.pos, GUN_IDS[Math.floor(rnd() * 3)], rollRarity(rnd));
-      else if (k < 0.62) this.spawnAmmo(s.pos, (['rifle', 'smg', 'sniper', 'rifle', 'smg'] as AmmoType[])[Math.floor(rnd() * 5)]);
-      else if (k < 0.82) this.spawn({ kind: 'plate', rarity: 2, amount: 1 + (rnd() < 0.3 ? 1 : 0) }, s.pos);
+      if (k < 0.45) {
+        const id = GUN_IDS[Math.floor(rnd() * 3)];
+        this.spawnGun(s.pos, id, rollRarity(rnd));
+        // Often with a box of its ammo next to it.
+        if (rnd() < 0.5) {
+          const a = rnd() * Math.PI * 2, p = s.pos.clone().add(new Vector3(Math.cos(a) * 0.6, 0, Math.sin(a) * 0.6));
+          if (this.colliders.groundBelow(p.x, p.z, 0.1, p.y + 0.05) > p.y - 0.05 && this.clear(p, 0.3, 0.3, 0.3)) this.spawnAmmo(p, AMMO_FOR[id]);
+        }
+      } else if (k < 0.7) this.spawnAmmo(s.pos, (['rifle', 'smg', 'sniper', 'rifle', 'smg'] as AmmoType[])[Math.floor(rnd() * 5)]);
+      else if (k < 0.86) this.spawn({ kind: 'plate', rarity: 2, amount: 1 + (rnd() < 0.3 ? 1 : 0) }, s.pos);
       else this.spawn({ kind: 'cash', rarity: 4, amount: 100 * Math.round(2 + rnd() * 6) }, s.pos);
     }
   }
@@ -347,16 +354,24 @@ export class Loot {
   /** What a gun's ammo is called, for prompts. */
   static ammoFor(id: GunId) { return AMMO_FOR[id]; }
 
-  private addSupply(p: Vector3, ry: number) {
+  private crateMats: { body: Material; dark: Material; lamp: Material } | null = null;
+
+  private makeCrateMats() {
     const crate = labelTexture(256, 128, (ctx) => {
       ctx.fillStyle = '#3f4a2c'; ctx.fillRect(0, 0, 256, 128);
       for (let i = -2; i < 14; i++) { ctx.fillStyle = i % 2 ? '#e0b020' : '#1a1a1a'; ctx.beginPath(); ctx.moveTo(i * 22, 96); ctx.lineTo(i * 22 + 22, 96); ctx.lineTo(i * 22 + 34, 120); ctx.lineTo(i * 22 + 12, 120); ctx.fill(); }
       ctx.fillStyle = '#e8e2c8'; ctx.font = 'bold 34px Arial'; ctx.textAlign = 'center'; ctx.fillText('SUPPLY', 128, 60);
       ctx.strokeStyle = '#2a3220'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 250, 122);
     });
-    const body = this.r.setupMaterial(new MeshStandardMaterial({ map: crate, roughness: 0.7, metalness: 0.2 }));
-    const dark = this.r.setupMaterial(new MeshStandardMaterial({ color: 0x2c3420, roughness: 0.6, metalness: 0.3 }));
-    const lamp = new MeshBasicMaterial({ color: 0xffc040 });
+    return {
+      body: this.r.setupMaterial(new MeshStandardMaterial({ map: crate, roughness: 0.7, metalness: 0.2 })),
+      dark: this.r.setupMaterial(new MeshStandardMaterial({ color: 0x2c3420, roughness: 0.6, metalness: 0.3 })),
+      lamp: new MeshBasicMaterial({ color: 0xffc040 }),
+    };
+  }
+
+  private addSupply(p: Vector3, ry: number) {
+    const { body, dark, lamp } = this.crateMats ??= this.makeCrateMats();
     const g = new Group();
     g.position.copy(p);
     g.rotation.y = ry;

@@ -28,7 +28,7 @@ function start(map: MapId) {
     play.classList.remove('hidden');
     leave.classList.remove('hidden');
     play.textContent = 'PLAY';
-    sub.textContent = `${MAP_NAMES[map]} · build 0.5`;
+    sub.textContent = `${MAP_NAMES[map]} · build 0.5.1`;
     game.renderer.gl.domElement.addEventListener('click', () => { if (game && !game.input.locked) resume(); });
     // Grabbing the mouse needs a click; after "play again" the page loads without one, so wait for PLAY.
     if (navigator.userActivation?.isActive ?? true) resume();

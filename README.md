@@ -16,7 +16,14 @@ Or build a single self-contained file you can double-click or send to a friend:
 npm run share      # → Warstrike.html (no server needed)
 ```
 
-## What's new in build 0.5
+## What's new in build 0.5.1
+
+**More loot:**
+- 22 supply boxes around the map instead of 9.
+- About three times as many guns lying on the floor (around 110 per match). Half of them have a box of matching ammo next to them.
+- More floor loot overall (about 230 spots).
+
+## What came in build 0.5
 
 **Hide from the bots, and watch them climb:**
 - **Bushes and trees block their sight.** Bullets still go through leaves, but bots can't see you through a bush or a tree crown.
