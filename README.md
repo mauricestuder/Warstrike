@@ -16,7 +16,21 @@ Or build a single self-contained file you can double-click or send to a friend:
 npm run share      # → Warstrike.html (no server needed)
 ```
 
-## What's new in build 0.4
+## What's new in build 0.5
+
+**Hide from the bots, and watch them climb:**
+- **Bushes and trees block their sight.** Bullets still go through leaves, but bots can't see you through a bush or a tree crown.
+  - Crouch behind a bush and you're hidden. Standing, your head shows over most of them.
+  - Thin leaves only hide you at range.
+  - Crouching in tall weeds hides you from anyone more than a few metres away.
+  - When you shoot, your muzzle flash gives you away for a moment.
+  - Bots also count bushes as cover when they look for a place to heal.
+- **Bots use upper floors.** Their navigation grid now has several levels, so they climb the stairs in the two-storey houses and onto the warehouse deck.
+  - They loot guns upstairs.
+  - They chase you up the stairs.
+  - Snipers like to take a high spot and hold it for a while.
+
+## What came in build 0.4
 
 **The bots fight back** (battle royale):
 - **They drop in with you.** Every bot jumps from the plane at its own moment, skydives and parachutes toward a loot-rich spot, spread out from the others.
@@ -69,7 +83,7 @@ npm run share      # → Warstrike.html (no server needed)
   | Random Epic gun | $2,500 |
   | Random Legendary gun | $4,500 |
 
-- **12 bots** (see build 0.4 above for how they play). They stay down when killed and drop cash, ammo, sometimes a plate, and their gun.
+- **12 bots** (see builds 0.4 and 0.5 above for how they play). They stay down when killed and drop cash, ammo, sometimes a plate, and their gun.
 - **Last one standing wins.** The Victory or Eliminated screen shows your placement, kills, damage, time survived, cash, items looted and longest kill.
 - **HUD:**
   - armour, health, plates and cash;
@@ -162,10 +176,10 @@ src/
   Game.ts            frame loop, camera feel, damage and feedback
   core/              input (pointer lock), settings, math
   render/            renderer + post, procedural textures, materials, effects (decals, tracers, particles)
-  world/             box colliders, the World interface, the geometry Builder (merges static meshes), the range
+  world/             box colliders, foliage (sight blockers), the World interface, the geometry Builder (merges static meshes), the range
   world/town/        Harbor Outskirts: materials, props, buildings, port, vegetation, layout
   br/                battle royale: match flow, loot and buy stations, gas zone, drop plane, minimap
-  ai/                bot navigation grid + A* path finding, and the bot brains (drop, loot, roam, fight)
+  ai/                bot navigation grid (all floors) + A* path finding, and the bot brains (drop, loot, roam, fight)
   player/            movement: sprint, crouch, slide, mantle
   weapons/           gun stats, firing, recoil, ballistics, first-person view models
   targets/           steel plates and bots

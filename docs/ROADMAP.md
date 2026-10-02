@@ -26,8 +26,12 @@ Each session builds on the last. Movement and gunplay come first, because everyt
 - They fight each other too. Only two take you on at once.
 - Positional gunfire, near-miss cracks, a hit-direction indicator and minimap gunfire pings.
 
+## ✅ Session 2b part 2a: Hiding and climbing (build 0.5)
+- Bushes, tree crowns and tall weeds block bot sight (muzzle flash gives you away).
+- Multi-level bot navigation: stairs, upper floors, the warehouse deck; snipers hold high spots.
+
 ## Session 2b part 2: A bigger map
-- Bots that use the upper floors and peek corners; vegetation that blocks their sight.
+- Bots that peek corners.
 - Downs and self-revive.
 - Grow the map outward: an old town centre, a farm, a hill with radio towers, and a river.
 

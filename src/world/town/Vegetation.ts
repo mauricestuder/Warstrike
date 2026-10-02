@@ -71,6 +71,7 @@ export function tree(b: Builder, m: TownMaterials, x: number, z: number, rnd: Rn
     if (kind !== 'dead') {
       const cr = h * (0.2 + rnd() * 0.08);
       b.add(leafCloud(end.x, end.y + cr * 0.2, end.z, cr, cr * 0.78, Math.round(26 * scale), 1.5 * scale, rnd), leaves);
+      b.foliage.add(end.x, end.y + cr * 0.2, end.z, cr, cr * 0.78);
     } else {
       // Bare twigs.
       for (let t = 0; t < 2; t++) {
@@ -82,13 +83,15 @@ export function tree(b: Builder, m: TownMaterials, x: number, z: number, rnd: Rn
   if (kind !== 'dead') {
     const cr = h * 0.27;
     b.add(leafCloud(top.x, top.y + cr * 0.35, top.z, cr, cr * 0.8, Math.round(38 * scale), 1.7 * scale, rnd), leaves);
+    b.foliage.add(top.x, top.y + cr * 0.35, top.z, cr, cr * 0.8);
   }
 }
 
-/** A shrub: a squashed leaf cloud sitting on the ground. No collider (you can push through, it's cover only). */
+/** A shrub: a squashed leaf cloud sitting on the ground. No collider (you can push through), but it hides you. */
 export function bush(b: Builder, m: TownMaterials, x: number, z: number, rnd: Rnd, size = 1) {
   const r = (0.8 + rnd() * 0.7) * size;
   b.add(leafCloud(x, r * 0.55, z, r, r * 0.65, Math.round(18 * size + 6), 0.9 * size, rnd), m.bushLeaves);
+  b.foliage.add(x, r * 0.55, z, r, r * 0.65);
 }
 
 /** Ivy climbing a wall face: cards flattened against the plane (axis 'x' = wall facing ±x). */

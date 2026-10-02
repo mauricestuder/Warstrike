@@ -2,6 +2,7 @@ import { BufferAttribute, BufferGeometry, Euler, Group, Matrix4, Mesh, Quaternio
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { worldBox } from '../render/Materials';
 import { Colliders, type Surface } from './Colliders';
+import { Foliage } from './Foliage';
 
 interface Bucket { mat: Material; geos: BufferGeometry[]; shadow: boolean; }
 
@@ -17,6 +18,8 @@ export type Rot = [number, number, number];
  */
 export class Builder {
   readonly colliders = new Colliders();
+  /** Leaves that block sight (for the bots) but not bullets. */
+  readonly foliage = new Foliage();
   readonly root = new Group();
   private buckets = new Map<string, Bucket>();
 

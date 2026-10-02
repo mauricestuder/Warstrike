@@ -1,5 +1,6 @@
 import type { Vector3 } from 'three';
 import type { Colliders } from './Colliders';
+import type { Foliage } from './Foliage';
 
 export interface SteelSpot { pos: Vector3; w: number; h: number; }
 export interface BotLane { center: Vector3; halfWidth: number; }
@@ -7,6 +8,8 @@ export interface BotLane { center: Vector3; halfWidth: number; }
 /** What the game needs from a map: collision, where you start, what to shoot at, and per-frame animation. */
 export interface World {
   readonly colliders: Colliders;
+  /** Bushes, tree crowns and tall grass that hide people from the bots (maps without any leave it out). */
+  readonly foliage?: Foliage;
   readonly spawn: Vector3;
   /** Facing at spawn (0 = looking toward -z). */
   readonly spawnYaw: number;

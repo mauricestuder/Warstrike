@@ -23,6 +23,10 @@ const RANGE: Record<GunId | 'hands', [number, number]> = { smg: [50, 11], ar: [1
 const BURST: Record<GunId, [number, number, number]> = { ar: [3, 7, 1.3], smg: [4, 9, 1.25], sniper: [1, 1, 1.15] };
 /** How far away a gunshot draws attention. */
 export const HEARING = 70;
+/** Metres of leaves a bot can't see through; anything less still makes you harder to spot. */
+const LEAF_BLOCK = 0.9;
+/** Muzzle flash gives a shooter away through leaves and grass for a moment, at up to this range. */
+const FLASH_T = 1.5, FLASH_RANGE = 60;
 
 class VirtualControls implements Controls {
   readonly down = new Set<string>();
@@ -35,7 +39,7 @@ class VirtualControls implements Controls {
 
 interface BotGun { id: GunId; rarity: Rarity; def: GunDef; mag: number; }
 
-const tA = new Vector3(), tB = new Vector3(), tC = new Vector3(), tD = new Vector3(), tE = new Vector3();
+const tA = new Vector3(), tB = new Vector3(), tC = new Vector3(), tD = new Vector3(), tE = new Vector3(), tF = new Vector3();
 
 /** Ray vs axis-aligned box; entry distance or -1. */
 function slab(o: Vector3, d: Vector3, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, maxT: number) {
@@ -116,6 +120,8 @@ export class BotAI {
   private time = 0;
   private whizT = 0;
   private claimed = new Set<LootItem>();
+  /** When each foe last fired (muzzle flash shows through bushes). */
+  private shotAt = new Map<Foe, number>();
   private thinkBudget = 1;
   /** Recent gunfire close to you, shown as red dots on the minimap: position and seconds left. */
   readonly pings: { pos: Vector3; life: number }[] = [];
@@ -159,6 +165,7 @@ export class BotAI {
 
   /** A gunshot at `pos`: bots in earshot remember where it came from. */
   noise(pos: Vector3, radius: number, from: Foe) {
+    this.shotAt.set(from, this.time);
     for (const b of this.brains) {
       if (b.state !== 'ground' || !b.bot.alive || b.bot === from) continue;
       if (b.pos.distanceToSquared(pos) > radius * radius) continue;
@@ -216,7 +223,8 @@ export class BotAI {
     let best: Vector3 | null = null, bestScore = -1;
     for (let i = 0; i < 7; i++) {
       const c = this.nav.randomIn(b.pos.x, b.pos.z, 120, Math.random);
-      if (!c || this.m.zone.outside(c.x, c.z) > -10) continue;
+      // Land on open ground (a parachute won't fit through a ceiling).
+      if (!c || c.y > 1.2 || this.m.zone.outside(c.x, c.z) > -10) continue;
       let score = Math.random() * 2;
       for (const it of this.m.loot.items) if (it.kind === 'gun' && !it.taken && it.pos.distanceToSquared(c) < 400) score += 1 + it.rarity * 0.3;
       // Spread out: nobody wants to land on top of someone else.
@@ -266,6 +274,8 @@ export class BotAI {
     // --- Decide where to go ---
     b.thinkT -= dt;
     b.repathT -= dt;
+    // Holding a spot ends early when there's a fight, a shot nearby or gas coming.
+    if (b.thinkT > 1 && (b.visible || (b.heard && this.time - b.heard.t < 2) || z.outside(b.pos.x, b.pos.z) > -8 || z.state.stage === 'shrink')) b.thinkT = 0.3;
     if (b.thinkT <= 0 && this.thinkBudget > 0) {
       this.thinkBudget--;
       b.thinkT = 0.6 + Math.random() * 0.4;
@@ -277,7 +287,7 @@ export class BotAI {
     const gunR = RANGE[b.gun?.id ?? 'hands'];
     let mx = 0, mz = 0, sprint = false;
     // Follow the path.
-    while (b.path.length && Math.hypot(b.path[0].x - b.pos.x, b.path[0].z - b.pos.z) < 0.55) b.path.shift();
+    while (b.path.length && Math.hypot(b.path[0].x - b.pos.x, b.path[0].z - b.pos.z) < 0.55 && Math.abs(b.path[0].y - b.pos.y) < 1.2) b.path.shift();
     if (b.path.length) {
       mx = b.path[0].x - b.pos.x; mz = b.path[0].z - b.pos.z;
       const l = Math.hypot(mx, mz); mx /= l; mz /= l;
@@ -300,10 +310,10 @@ export class BotAI {
         mx = fx * toward + rx * b.strafe * (b.armed ? 1 : 0.4);
         mz = fz * toward + rz * b.strafe * (b.armed ? 1 : 0.4);
         // Don't strafe off a ledge, into the water or the gas.
-        if ((mx || mz) && (!this.nav.walkableAt(b.pos.x + mx * 1.1, b.pos.z + mz * 1.1) || z.outside(b.pos.x + mx * 3, b.pos.z + mz * 3) > 0)) {
+        if ((mx || mz) && (!this.nav.walkableAt(b.pos.x + mx * 1.1, b.pos.y, b.pos.z + mz * 1.1) || z.outside(b.pos.x + mx * 3, b.pos.z + mz * 3) > 0)) {
           b.strafe = -b.strafe;
           mx = fx * toward; mz = fz * toward;
-          if (toward && !this.nav.walkableAt(b.pos.x + mx * 1.1, b.pos.z + mz * 1.1)) mx = mz = 0;
+          if (toward && !this.nav.walkableAt(b.pos.x + mx * 1.1, b.pos.y, b.pos.z + mz * 1.1)) mx = mz = 0;
         }
         // Snipers plant their feet to line up the shot.
         if (b.gun?.id === 'sniper' && d > 20) { mx = mz = 0; }
@@ -355,6 +365,7 @@ export class BotAI {
     let best: Foe | null = null, bestScore = Infinity;
     const consider = (f: Foe) => {
       if (!this.foeAlive(f)) return;
+      const flash = this.time - (this.shotAt.get(f) ?? -99) < FLASH_T;
       // Without a gun, a bot only squares up to you (or whoever hit it); other bots it avoids.
       if (!b.gun && f !== 'player' && f !== b.hurtFrom) return;
       // Fresh off the plane, bots are busy looting and leave each other alone unless shot at.
@@ -372,14 +383,18 @@ export class BotAI {
       if (d > range && !known) return;
       const ang = Math.acos(clamp(((c.x - eye.x) * fwdX + (c.z - eye.z) * fwdZ) / Math.max(0.01, Math.hypot(c.x - eye.x, c.z - eye.z)), -1, 1));
       if (ang > FOV_HALF && d > 7 && !known && f !== b.hurtFrom) return;
-      tD.subVectors(c, eye).normalize();
-      if (this.colliders.raycast(eye, tD, d - 0.3)) {
-        // Chest hidden; try the head (someone peeking over cover).
-        const h = this.foeHead(f, tC);
-        const dh = h.distanceTo(eye);
-        tD.subVectors(h, eye).normalize();
-        if (this.colliders.raycast(eye, tD, dh - 0.2)) return;
+      // Crouched in tall weeds you're invisible past a few metres (until you shoot).
+      if (isPlayer && this.g.player.stance === 'crouch' && !(flash && d < FLASH_RANGE)) {
+        const pp = this.g.player.pos;
+        if (d > (known ? 16 : 7) && this.g.world.foliage?.tallGrass(pp.x, pp.z)) return;
       }
+      // Line of sight to the chest, or failing that the head (someone peeking over cover or a bush).
+      let leaves = this.sightTo(eye, c, d - 0.3);
+      if (leaves >= LEAF_BLOCK) leaves = Math.min(leaves, this.sightTo(eye, this.foeHead(f, tC), -1));
+      if (flash && d < FLASH_RANGE && leaves < Infinity) leaves = 0;
+      if (leaves >= LEAF_BLOCK) return;
+      // Seen through thinner leaves: only up close (or when it's the one it's already fighting).
+      if (leaves > 0.2 && !known && d > range * (1 - (leaves / LEAF_BLOCK) * 0.75)) return;
       const score = d * (f === b.target ? 0.6 : 1);
       if (score < bestScore) { bestScore = score; best = f; }
     };
@@ -398,6 +413,19 @@ export class BotAI {
       b.seenT = 0;
       if (b.target && this.time - b.lastSeenAt > 9) b.target = null;
     }
+  }
+
+  /**
+   * Can an eye see point `p`? Infinity when a wall is in the way, otherwise the metres of leaves in between (not
+   * counting the first metre, so a bot can see out of the bush it's standing in). `maxT` < 0 means up to `p`.
+   */
+  private sightTo(eye: Vector3, p: Vector3, maxT: number) {
+    const d = eye.distanceTo(p);
+    tE.subVectors(p, eye).divideScalar(d);
+    if (this.colliders.raycast(eye, tE, maxT < 0 ? d - 0.2 : maxT)) return Infinity;
+    const fol = this.g.world.foliage;
+    if (!fol || d < 1.2) return 0;
+    return fol.leaves(tF.copy(eye).addScaledVector(tE, 1), p, LEAF_BLOCK);
   }
 
   /** How many other bots are currently fighting you. */
@@ -422,8 +450,8 @@ export class BotAI {
       return true;
     };
     // Off the walkable grid (a roof, a crate): head for the nearest ground.
-    if (!this.nav.walkableAt(pos.x, pos.z)) {
-      const n = this.nav.nearest(pos.x, pos.z, 14);
+    if (!this.nav.walkableAt(pos.x, pos.y, pos.z)) {
+      const n = this.nav.nearest(pos.x, pos.y, pos.z, 14);
       if (n) { b.goal = n; b.goalKind = 'none'; b.path = [n]; }
       return;
     }
@@ -480,6 +508,12 @@ export class BotAI {
       const ang = rnd() * Math.PI * 2, d = 15 + rnd() * 40;
       let px = pos.x + Math.cos(ang) * d, pz = pos.z + Math.sin(ang) * d;
       if (Math.hypot(px - c.x, pz - c.y) > c.r * 0.85) { px = c.x + (px - c.x) * 0.5; pz = c.y + (pz - c.y) * 0.5; }
+      // Snipers (and some of the others) like a high spot nearby: an upstairs room, the warehouse deck.
+      const climb = b.gun!.id === 'sniper' ? 0.7 : 0.25;
+      if (pos.y < 1.5 && rnd() < climb) {
+        const hp = this.nav.randomHigh(pos.x, pos.z, 50, rnd);
+        if (hp && Math.hypot(hp.x - c.x, hp.z - c.y) < c.r * 0.85 && set('roam', hp)) return;
+      }
       set('roam', this.nav.randomIn(px, pz, 6, rnd));
     }
   }
@@ -487,7 +521,7 @@ export class BotAI {
   /** Reached the goal: grab the gun if it's still there. */
   private arrive(b: Brain) {
     const it = b.goalItem;
-    if (b.goalKind === 'loot' && it && !it.taken && Math.hypot(it.pos.x - b.pos.x, it.pos.z - b.pos.z) < 1.8 && it.kind === 'gun') {
+    if (b.goalKind === 'loot' && it && !it.taken && Math.hypot(it.pos.x - b.pos.x, it.pos.z - b.pos.z) < 1.8 && Math.abs(it.pos.y - b.pos.y) < 1.2 && it.kind === 'gun') {
       it.taken = true;
       if (b.gun) this.m.loot.spawnGun(b.pos.clone().setY(b.pos.y + 0.2), b.gun.id, b.gun.rarity, new Vector3(0, 2, 0), b.gun.mag);
       this.equip(b, it.gun!, it.rarity, it.amount);
@@ -495,7 +529,8 @@ export class BotAI {
     if (b.goalKind !== 'cover') { b.goal = null; b.goalKind = 'none'; }
     this.unclaim(b);
     b.goalItem = null;
-    b.thinkT = Math.min(b.thinkT, 0.3);
+    // Made it to a high spot: hold it for a while and watch.
+    b.thinkT = b.pos.y > 1.5 && !b.target ? 4 + Math.random() * 6 : Math.min(b.thinkT, 0.3);
   }
 
   private unclaim(b: Brain) { if (b.goalItem) this.claimed.delete(b.goalItem); }
@@ -514,10 +549,11 @@ export class BotAI {
     let best: LootItem | null = null, bd = maxD;
     for (const it of this.m.loot.items) {
       if (it.kind !== 'gun' || it.taken || it.vel || this.claimed.has(it) || it.rarity <= better) continue;
-      // Only things on the ground floor are reachable.
-      const fl = this.nav.nearest(it.pos.x, it.pos.z, 1);
+      // Only things lying on a floor the bots can walk to (not on top of a shelf or a container).
+      const fl = this.nav.nearest(it.pos.x, it.pos.y, it.pos.z, 1);
       if (!fl || Math.abs(fl.y - it.pos.y) > 0.6) continue;
-      const d = Math.hypot(it.pos.x - b.pos.x, it.pos.z - b.pos.z);
+      // Another floor counts as further away (it's a walk to the stairs).
+      const d = Math.hypot(it.pos.x - b.pos.x, it.pos.z - b.pos.z) + Math.abs(it.pos.y - b.pos.y) * 4;
       if (d < bd) { bd = d; best = it; }
     }
     return best;
@@ -531,8 +567,8 @@ export class BotAI {
       if (!p) continue;
       tA.set(p.x, p.y + 1.3, p.z);
       const d = from.distanceTo(tA);
-      tD.subVectors(tA, from).normalize();
-      if (!this.colliders.raycast(from, tD, d - 0.3)) continue;
+      // Behind a wall or deep in a bush both count.
+      if (this.sightTo(from, tA, d - 0.3) < LEAF_BLOCK) continue;
       const cost = p.distanceTo(b.pos) - Math.min(d, 30) * 0.2;
       if (cost < bd) { bd = cost; best = p; }
     }
