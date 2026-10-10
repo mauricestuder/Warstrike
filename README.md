@@ -1,7 +1,7 @@
 # WARSTRIKE
 
 A browser FPS built from scratch with **Three.js + TypeScript**, taking inspiration from Warzone's gunplay and Blood Strike's pace.
-The long-term goal is a big battle royale. Build 0.4 has a **battle royale mode** on Harbor Outskirts with bots that fight back, a **gun range** for dialling in movement and gunplay, and **free roam** on Harbor Outskirts.
+The long-term goal is a big battle royale. Build 0.7 has a **battle royale mode** on **Calvert**, a half-kilometre town, with 37 bots that fight back. There's also a **gun range** for dialling in movement and gunplay, and **free roam** on Calvert.
 
 ## Play
 
@@ -16,7 +16,65 @@ Or build a single self-contained file you can double-click or send to a friend:
 npm run share      # → Warstrike.html (no server needed)
 ```
 
-## What's new in build 0.6
+## What's new in build 0.7
+
+**A new, much bigger map: Calvert.** It's about 480 × 480 m, over four times the old map. Harbor Outskirts is now its northern middle.
+
+**Downtown** (south):
+- **The street grid:** Harbor Road and Main Street, Elm and Oak Street, and 1st and 3rd Avenue, with sidewalks, crosswalks, traffic lights, street signs, a broken-down bus, a police roadblock and rain puddles that reflect the sky.
+- **Buildings:** more than 30 three- to six-storey buildings: shops with signs and awnings, offices, flats, a bank, a pawn shop, a diner and a hotel.
+  - **Every floor can be walked:** each building has a real staircase inside, and many go on up to a stair hut on the roof. The Grand Harbor Hotel roof is the highest point downtown.
+- **The parking garage:** four open levels joined by ramps, with low walls to shoot over.
+- **The town square:** a fountain with a statue, benches, lamps and trees, and City Hall with columns and a clock tower.
+- **St. Mary's church:** a five-storey bell tower you can climb, and a graveyard.
+- **Around the edges:** Calvert Park with a gazebo, a lumber yard, a cannery warehouse and a fire station.
+
+**West side:**
+- **The fish docks:** boat sheds, fishing boats on cradles, and the fish market with roof access.
+- **Miller Farm:**
+  - a red barn with a hayloft you can climb;
+  - silos, grain bins, a farmhouse, a tractor, hay bales and fences;
+  - a big cornfield. The corn is taller than you, so bots can't see you in it.
+- **The woods:** cabins, a pond with reeds and a dock, a campground, and a fire lookout tower with a view over the whole west side.
+
+**East side:**
+- **The railway:** two tracks run the length of the map.
+  - A freight train you can climb into (open boxcars, tank cars, flatcars carrying containers), plus a derailed boxcar.
+  - A station with a platform and departure board, and a level crossing on Main Street.
+- **Industry:**
+  - **The grain terminal:** six concrete silos and a seven-storey head house you can climb.
+  - **Calvert Steel Works:** a furnace hall with a mezzanine and a 48 m smokestack.
+  - **A truck depot** under the water tower.
+- **Calvert High:** a school with classrooms on two floors, a gym, and school buses.
+  - **The stadium:** a football field, a grandstand with a press box, and floodlights.
+
+**Graphics:**
+- **Anti-tiling:** ground, roads, walls and plazas no longer show a repeating pattern.
+- **New textures:**
+  - stucco facades;
+  - brick pavers;
+  - gravel roofs;
+  - board-and-batten barn wood;
+  - dirt tracks with tyre ruts;
+  - clay roof tiles;
+  - corn.
+- **A new Ultra setting:** ambient occlusion (soft contact shadows in corners and under things), 1024 px textures, and shadows drawn further out.
+- **Lighting:** a clearer sky, a higher sun and softer bloom, so looking toward the sun no longer washes the picture out.
+
+**Battle royale on the bigger map:**
+- 37 bots instead of 12.
+- More loot to match: about 80 supply boxes and around 1,000 items on the floor.
+- 18 buy stations, at least one in every district.
+- The gas circle starts big enough to cover the town and takes a bit longer to close.
+- The map screen shows the whole town.
+- Bots climb all the new stairs. A bot that lands on a roof with no way down gets back onto the ground after a few seconds instead of standing there.
+
+**Faster under the hood:**
+- Bullets and bot sight only test the walls along their path, not every wall on the map.
+- The town is merged into bigger chunks, so fewer draw calls.
+- Bots far away from you don't cast shadows.
+
+## What came in build 0.6
 
 **A fourth gun: the BRUISER 12 pump shotgun.**
 - Each shell fires 8 pellets in a cone. Up close that's about 150 damage, enough to drop an unarmoured enemy in one shot. It falls off fast: about 65 at 10 m and almost nothing past 20 m.
@@ -195,7 +253,7 @@ src/
   core/              input (pointer lock), settings, math
   render/            renderer + post, procedural textures, materials, effects (decals, tracers, particles)
   world/             box colliders, foliage (sight blockers), the World interface, the geometry Builder (merges static meshes), the range
-  world/town/        Harbor Outskirts: materials, props, buildings, port, vegetation, layout
+  world/town/        Calvert: materials, props, buildings, multi-storey blocks, port, downtown, west (farm, woods), east (rail, industry, school), vegetation, layout
   br/                battle royale: match flow, loot and buy stations, gas zone, drop plane, minimap
   ai/                bot navigation grid (all floors) + A* path finding, and the bot brains (drop, loot, roam, fight)
   player/            movement: sprint, crouch, slide, mantle

@@ -31,11 +31,11 @@
     <div id="menu">
       <div class="panel">
         <h1>WAR<span>STRIKE</span></h1>
-        <p class="sub" id="sub">Build 0.6 · choose a mode</p>
+        <p class="sub" id="sub">Build 0.7 · choose a mode</p>
         <div id="maps">
-          <button class="map br" data-map="br"><b>BATTLE ROYALE</b><span>Drop from the plane into Harbor Outskirts · loot guns, plates and cash · outlast the gas and 12 bots</span></button>
+          <button class="map br" data-map="br"><b>BATTLE ROYALE</b><span>Drop from the plane into Calvert · port, downtown, farm, rail yard and school · loot guns, plates and cash · outlast the gas and 37 bots</span></button>
           <button class="map" data-map="range"><b>GUN RANGE</b><span>Steel out to 300 m, strafing bots, wallbang lane, movement course · infinite ammo</span></button>
-          <button class="map" data-map="town"><b>HARBOR OUTSKIRTS</b><span>Free roam: overgrown suburb, gas station, auto shop, port with containers and a crane · 12 bots · full loadout</span></button>
+          <button class="map" data-map="town"><b>CALVERT</b><span>Free roam the whole town: port and crane, suburb, downtown blocks you can climb, farm and cornfield, rail yard, steel works, school and stadium · 37 bots · full loadout</span></button>
         </div>
         <button id="play" class="primary hidden">RESUME</button>
         <button id="leave" class="ghost hidden">Back to map select</button>
@@ -46,7 +46,7 @@
           <label>Field of view <output id="o-fov"></output><input id="s-fov" type="range" min="70" max="120" step="1" /></label>
           <label>Volume <output id="o-vol"></output><input id="s-vol" type="range" min="0" max="1" step="0.05" /></label>
           <label class="row">Graphics
-            <select id="s-quality"><option value="high">High (shadow cascades, MSAA, 512 px textures)</option><option value="low">Low (faster)</option></select>
+            <select id="s-quality"><option value="ultra">Ultra (ambient occlusion, 1024 px textures, longer shadows)</option><option value="high">High (shadow cascades, MSAA, 512 px textures)</option><option value="low">Low (faster)</option></select>
           </label>
           <label class="row check"><input id="s-fps" type="checkbox" /> Show FPS</label>
           <p class="note" id="quality-note"></p>

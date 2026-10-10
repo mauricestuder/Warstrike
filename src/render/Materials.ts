@@ -17,7 +17,7 @@ export class Materials {
   readonly bySurface: Record<Surface, MeshStandardMaterial>;
 
   constructor(r: Renderer) {
-    const n = r.quality === 'high' ? 512 : 256;
+    const n = r.quality === 'ultra' ? 1024 : r.quality === 'high' ? 512 : 256;
     const mk = (t: TexSet, extra: MeshStandardMaterialParameters = {}) =>
       r.setupMaterial(new MeshStandardMaterial({ ...t, metalness: 0, ...extra }));
     this.concrete = mk(concreteTex(n));

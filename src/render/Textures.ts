@@ -443,3 +443,120 @@ export function weather(ctx: CanvasRenderingContext2D, w: number, h: number, see
   }
   ctx.restore();
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Big-map textures
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Painted render (stucco) facade: fine trowel bumps, rain streaks under the cornice, a dirty plinth, hairline cracks. */
+export function stuccoTex(n: number): TexSet {
+  const h = fbm(n, 151, 24, 5, 0.55), blot = fbm(n, 152, 4, 5), streak = columns(n, 153, 24, 4), crack = cracks(n, 154, 2, n * 0.35);
+  for (let i = 0; i < n * n; i++) h[i] = h[i] * 0.5 - crack[i] * 0.6;
+  return build(n, h, (i, x, y) => {
+    if (crack[i]) return [96, 92, 86];
+    const v = y / n, run = sstep(0.5, 0.85, streak[x]) * (1 - v) * 0.35;
+    const dirt = sstep(0.55, 0.85, blot[i]) * 0.25 + run;
+    return shade(mix([232, 228, 218], [136, 128, 112], clamp01(dirt)), 0.88 + h[i] * 0.18);
+  }, (i) => 0.86 + blot[i] * 0.1, 1.4, 1);
+}
+
+/** Brick pavers in a herringbone-ish running bond with moss in the joints (town square, plazas). */
+export function paverTex(n: number): TexSet {
+  const rows = 8, rh = n / rows, cw = rh * 2, rnd = mulberry32(161);
+  const tone = Array.from({ length: 64 }, () => 0.78 + rnd() * 0.36), hue = Array.from({ length: 64 }, () => rnd());
+  const noise = fbm(n, 162, 32, 4), moss = fbm(n, 163, 5, 5), h = new Float32Array(n * n);
+  const at = (x: number, y: number) => {
+    const r = Math.floor(y / rh), off = r % 2 ? cw / 2 : 0, xx = (x + off) % n;
+    const c = Math.floor(xx / cw), u = (xx % cw) / cw, v = (y % rh) / rh;
+    return { k: (r * 7 + c * 3) % 64, joint: u < 0.03 || u > 0.97 || v < 0.06 || v > 0.94, edge: Math.min(u, 1 - u, v, 1 - v) };
+  };
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const a = at(x, y), i = y * n + x;
+    h[i] = a.joint ? -0.6 : Math.min(a.edge * 6, 1) * 0.35 + noise[i] * 0.25;
+  }
+  return build(n, h, (i, x, y) => {
+    const a = at(x, y);
+    if (a.joint) return moss[i] > 0.5 ? [54, 70, 34] : [74, 70, 62];
+    return shade(mix([150, 84, 62], [120, 110, 98], hue[a.k] * 0.7), tone[a.k] * (0.82 + noise[i] * 0.3));
+  }, (i) => 0.82 + noise[i] * 0.12, 2.2, 1);
+}
+
+/** Tar-and-gravel flat roof. */
+export function gravelTex(n: number): TexSet {
+  const h = fbm(n, 171, 64, 3, 0.6), stain = fbm(n, 172, 4, 4), rnd = mulberry32(173);
+  for (let i = 0; i < n * n; i++) if (rnd() < 0.25) h[i] += rnd() * 0.5;
+  return build(n, h, (i) => shade(mix([128, 124, 116], [84, 82, 78], stain[i]), 0.65 + h[i] * 0.55),
+    (i) => 0.95 - h[i] * 0.05, 2.6, 1);
+}
+
+/** Vertical board-and-batten planks, painted (tint per material), paint worn through to grey wood. */
+export function boardTex(n: number): TexSet {
+  const boards = 6, bw = n / boards, wear = fbm(n, 181, 5, 5), grain = fbm(n, 182, 6, 4), streak = columns(n, 183, 48, 3);
+  const h = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const i = y * n + x, u = (x % bw) / bw;
+    h[i] = (u < 0.06 || u > 0.94 ? 0.6 : 0) + streak[x] * 0.2 + grain[i] * 0.1;
+  }
+  return build(n, h, (i, x) => {
+    const u = (x % bw) / bw, bare = wear[i] > 0.66 + streak[x] * 0.1;
+    const base: RGB = bare ? [120, 112, 100] : [226, 222, 214];
+    return shade(base, (0.84 + streak[x] * 0.2 + grain[i] * 0.1) * (u < 0.06 || u > 0.94 ? 0.85 : 1));
+  }, (i) => (wear[i] > 0.66 ? 0.95 : 0.78), 2.2, 1);
+}
+
+/** Packed dirt track with tyre ruts along the texture's v axis and gravel. */
+export function trackTex(n: number): TexSet {
+  const h = fbm(n, 191, 16, 6, 0.6), patch = fbm(n, 192, 4, 4), rnd = mulberry32(193);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const u = x / n, rut = Math.exp(-(((u - 0.3) * 14) ** 2)) + Math.exp(-(((u - 0.7) * 14) ** 2));
+    h[y * n + x] = h[y * n + x] * 0.6 - rut * 0.25 + (rnd() < 0.04 ? rnd() * 0.4 : 0);
+  }
+  return build(n, h, (i) => shade(mix([128, 108, 80], [96, 84, 66], patch[i]), 0.7 + h[i] * 0.5), (i) => 0.94 - h[i] * 0.06, 2.4, 1);
+}
+
+/** Clay roof tiles (church, city hall): curved rows with per-tile tone. */
+export function roofTileTex(n: number): TexSet {
+  const rows = 10, rh = n / rows, cols = 8, cw = n / cols, rnd = mulberry32(201);
+  const tone = Array.from({ length: rows * cols }, () => 0.75 + rnd() * 0.4), moss = fbm(n, 202, 5, 5), h = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const r = Math.floor(y / rh), off = r % 2 ? cw / 2 : 0, u = ((x + off) % cw) / cw, v = (y % rh) / rh;
+    h[y * n + x] = Math.sin(u * Math.PI) * 0.6 + v * 0.3 - (v > 0.92 ? 0.6 : 0);
+  }
+  return build(n, h, (i, x, y) => {
+    const r = Math.floor(y / rh), off = r % 2 ? cw / 2 : 0, c = Math.floor(((x + off) % n) / cw), v = (y % rh) / rh;
+    if (v > 0.92) return [40, 30, 26];
+    return mix(shade([156, 74, 48], tone[r * cols + c] * (0.8 + h[i] * 0.3)), [80, 86, 52], sstep(0.62, 0.8, moss[i]) * 0.7);
+  }, () => 0.8, 2.4, 1);
+}
+
+/** Corn stalk card (alpha): a stem with long arching leaves and a tassel. */
+export function cornTex(n: number, seed: number): Texture {
+  const c = document.createElement('canvas');
+  c.width = n; c.height = n * 2;
+  const ctx = c.getContext('2d')!, rnd = mulberry32(seed), H = n * 2;
+  for (let s = 0; s < 3; s++) {
+    const x0 = n * (0.3 + s * 0.2 + (rnd() - 0.5) * 0.08);
+    ctx.strokeStyle = `hsl(${62 + rnd() * 14},38%,${30 + rnd() * 8}%)`;
+    ctx.lineWidth = n * 0.03;
+    ctx.beginPath(); ctx.moveTo(x0, H); ctx.lineTo(x0 + (rnd() - 0.5) * n * 0.06, H * 0.08); ctx.stroke();
+    for (let k = 0; k < 9; k++) {
+      const y = H * (0.15 + k * 0.09 + rnd() * 0.03), dir = k % 2 ? 1 : -1, len = n * (0.25 + rnd() * 0.22);
+      ctx.fillStyle = `hsl(${55 + rnd() * 25},${34 + rnd() * 12}%,${28 + rnd() * 14}%)`;
+      ctx.beginPath();
+      ctx.moveTo(x0, y);
+      ctx.quadraticCurveTo(x0 + dir * len * 0.6, y - n * 0.12, x0 + dir * len, y + n * 0.1 * rnd());
+      ctx.quadraticCurveTo(x0 + dir * len * 0.5, y - n * 0.06, x0, y + n * 0.03);
+      ctx.fill();
+    }
+    ctx.strokeStyle = 'hsl(44,48%,58%)';
+    ctx.lineWidth = n * 0.008;
+    for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(x0, H * 0.08); ctx.lineTo(x0 + (rnd() - 0.5) * n * 0.14, H * 0.01); ctx.stroke(); }
+    // A cob.
+    ctx.fillStyle = 'hsl(52,40%,48%)';
+    ctx.beginPath(); ctx.ellipse(x0 + n * 0.03, H * 0.48, n * 0.03, n * 0.09, 0.2, 0, Math.PI * 2); ctx.fill();
+  }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}

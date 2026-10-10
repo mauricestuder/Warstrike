@@ -80,6 +80,8 @@ class Brain {
   thinkT = Math.random() * 0.5;
   repathT = 0;
   stuckT = 0;
+  /** Seconds standing somewhere off the walkable grid (a roof with no stairs, wedged against a wall). */
+  offT = 0;
   readonly stuckFrom = new Vector3();
   groundT = 0;
   // Combat.
@@ -261,6 +263,16 @@ export class BotAI {
       if (b.reloadT <= 0 && b.gun) b.gun.mag = b.gun.def.mag;
     }
     b.cooldown -= dt;
+    // Stranded off the grid (parachuted onto a roof with no way down, squeezed into a blocked corner) for too long:
+    // drop back onto the nearest walkable floor so the bot keeps playing.
+    if (b.mover.onGround && !this.nav.walkableAt(b.pos.x, b.pos.y, b.pos.z)) {
+      b.offT += dt;
+      if (b.offT > 7) {
+        const n = this.nav.nearest(b.pos.x, b.pos.y, b.pos.z, 25);
+        if (n) { b.pos.copy(n); b.mover.vel.set(0, 0, 0); b.path = []; b.goal = null; b.goalKind = 'none'; b.thinkT = 0; }
+        b.offT = 0;
+      }
+    } else b.offT = 0;
 
     // --- Perception ---
     b.lookT -= dt;
@@ -449,10 +461,14 @@ export class BotAI {
       b.goal = p; b.goalKind = kind; b.goalItem = item; b.path = path; b.repathT = 4;
       return true;
     };
-    // Off the walkable grid (a roof, a crate): head for the nearest ground.
+    // Off the walkable grid (a roof, a crate): head for the nearest ground and keep going from there, so a bot
+    // wedged right next to its nearest node doesn't "arrive" without having moved.
     if (!this.nav.walkableAt(pos.x, pos.y, pos.z)) {
       const n = this.nav.nearest(pos.x, pos.y, pos.z, 14);
-      if (n) { b.goal = n; b.goalKind = 'none'; b.path = [n]; }
+      if (n) {
+        const tp = this.nav.randomIn(n.x, n.z, 14, rnd), rest = tp ? this.nav.path(n, tp) : null;
+        b.goal = rest ? tp : n; b.goalKind = rest ? 'roam' : 'none'; b.path = rest ? [n, ...rest] : [n];
+      }
       return;
     }
     // Re-plan the current route now and then (things move, bots get shoved).

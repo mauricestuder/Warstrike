@@ -1,4 +1,4 @@
-export type Quality = 'low' | 'high';
+export type Quality = 'low' | 'high' | 'ultra';
 
 export interface Settings {
   /** Degrees of turn per mouse count ×100 (Valorant/CS style number). */

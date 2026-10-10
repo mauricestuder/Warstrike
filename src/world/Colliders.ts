@@ -9,6 +9,8 @@ export interface Box {
   surface: Surface;
   /** Player-only clip (map edges): stops movement, bullets pass through. */
   clip?: boolean;
+  /** Query stamp (so a box spanning several grid cells is tested once per query). */
+  seen?: number;
 }
 
 /**
@@ -70,7 +72,6 @@ export class Colliders {
   private grid = new Map<number, Box[]>();
   private dirty = true;
   private stamp = 0;
-  private seen = new WeakMap<Box, number>();
 
   add(min: Vector3, max: Vector3, surface: Surface, clip = false): Box {
     const b: Box = { min: min.clone(), max: max.clone(), surface, clip };
@@ -104,7 +105,7 @@ export class Colliders {
       const c = this.grid.get(Colliders.key(i, j));
       if (!c) continue;
       for (const b of c) {
-        if (multi) { if (this.seen.get(b) === s) continue; this.seen.set(b, s); }
+        if (multi) { if (b.seen === s) continue; b.seen = s; }
         if (fn(b)) return;
       }
     }
@@ -112,14 +113,32 @@ export class Colliders {
 
   /** Nearest box hit along a normalized ray within maxT. `skip` ignores one box (the one a bullet just exited). */
   raycast(o: Vector3, d: Vector3, maxT: number, skip?: Box): RayHit | null {
+    if (this.dirty) this.rebuild();
+    if (!(maxT < 5000)) maxT = 5000;
     let best: RayHit | null = null;
-    for (const b of this.boxes) {
-      if (b === skip || b.clip) continue;
-      const t = rayBox(o, d, b, best ? best.t : maxT);
-      if (t >= 0 && (!best || t < best.t)) {
-        if (best) { best.t = t; best.box = b; best.normal.copy(hitNormal); }
-        else best = { t, box: b, normal: hitNormal.clone() };
+    const s = ++this.stamp;
+    // Walk the grid cells the ray crosses in XZ (DDA). A box only in a later cell can't be hit before the current
+    // cell's exit, so once the best hit is closer than that, we're done.
+    let i = Math.floor(o.x / CELL), j = Math.floor(o.z / CELL);
+    const si = d.x > 0 ? 1 : -1, sj = d.z > 0 ? 1 : -1;
+    const dX = Math.abs(d.x) > 1e-9 ? CELL / Math.abs(d.x) : Infinity, dZ = Math.abs(d.z) > 1e-9 ? CELL / Math.abs(d.z) : Infinity;
+    let tX = Math.abs(d.x) > 1e-9 ? ((i + (d.x > 0 ? 1 : 0)) * CELL - o.x) / d.x : Infinity;
+    let tZ = Math.abs(d.z) > 1e-9 ? ((j + (d.z > 0 ? 1 : 0)) * CELL - o.z) / d.z : Infinity;
+    for (;;) {
+      const c = this.grid.get(Colliders.key(i, j));
+      if (c) for (const b of c) {
+        if (b.seen === s) continue;
+        b.seen = s;
+        if (b === skip || b.clip) continue;
+        const t = rayBox(o, d, b, best ? best.t : maxT);
+        if (t >= 0 && (!best || t < best.t)) {
+          if (best) { best.t = t; best.box = b; best.normal.copy(hitNormal); }
+          else best = { t, box: b, normal: hitNormal.clone() };
+        }
       }
+      const exit = Math.min(tX, tZ);
+      if (exit >= (best ? best.t : maxT)) break;
+      if (tX < tZ) { tX += dX; i += si; } else { tZ += dZ; j += sj; }
     }
     return best;
   }

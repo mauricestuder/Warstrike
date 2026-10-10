@@ -91,8 +91,8 @@ export function plane(p: Placer, lx: number, ly: number, lz: number, w: number, 
 
 /** Abandoned sedan: extruded body profile with wheel arches, glass greenhouse, bumpers, lights, flat or missing tyres. */
 export function car(b: Builder, m: TownMaterials, x: number, z: number, ry: number, paint: Material, rnd: Rnd,
-  opts: { burnt?: boolean; noWheels?: boolean } = {}) {
-  const sunk = opts.noWheels ? -0.2 : 0;
+  opts: { burnt?: boolean; noWheels?: boolean; y?: number } = {}) {
+  const sunk = (opts.noWheels ? -0.2 : 0) + (opts.y ?? 0);
   const p = new Placer(b, x, sunk, z, ry, 0, opts.noWheels ? 0.03 : (rnd() - 0.5) * 0.02);
   const W = 1.78;
   const s = new Shape();

@@ -1,7 +1,7 @@
 import { OrthographicCamera, Vector2, type FogExp2, type Vector3 } from 'three';
 import type { Renderer } from '../render/Renderer';
 
-const SIZE = 512;
+const SIZE = 1024;
 
 export interface MapMarks {
   player: Vector3;

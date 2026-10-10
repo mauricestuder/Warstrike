@@ -12,40 +12,51 @@ import {
   barrel, car, chainFence, counter, decalMat, hydrant, jersey, mailbox, pallet, picketFence, Placer, plane, powerPole,
   shelf, signPost, stopSign, streetLight, streetName, table, tire, wire,
 } from './Props';
+import { downtown } from './Downtown';
+import { eastSide as railYard } from './East';
+import { westSide as farmland } from './West';
+import type { Rect, Site } from './Site';
 import { TownMaterials, WIND } from './TownMaterials';
 import { bush, grass, tree, type TreeKind } from './Vegetation';
 
-type Rect = [number, number, number, number];
-
 /** Playable area. Everything outside is scenery behind invisible walls. */
-const X0 = -120, X1 = 120, Z0 = -118, Z1 = 120;
+const X0 = -240, X1 = 240, Z0 = -118, Z1 = 360;
+/** The original chunk (suburb, gas station, port) in the middle of the north half. */
+const CX0 = -120;
 const QUAY = -118;
 
 /**
- * "Harbor Outskirts": the first chunk of the big map. An abandoned, overgrown US suburb (Maple Street), a gas
- * station at the junction, an auto shop and fields on the east side, and past the fence a port with a warehouse,
- * a container yard, a gantry crane, fuel tanks and the quay.
+ * "Calvert": an abandoned harbour town, about half a kilometre square.
+ * - Harbor Outskirts (middle north): an overgrown suburb on Maple Street, a gas station at the junction, an auto shop,
+ *   and past the fence the port with a warehouse, container yard, gantry crane, fuel tanks and the quay.
+ * - Downtown (south): brick and stucco blocks you can climb floor by floor, a parking garage, the town square with
+ *   city hall, a church with a bell tower, a hotel.
+ * - West: the fish docks on the harbour, Miller Farm (barn, silos, cornfield) along Maple Street, the woods with a fire
+ *   lookout and cabins.
+ * - East: the railway, a grain terminal on the quay, the steel works, a water tower, the high school and stadium.
  *
- * North is -z. Harbor Road runs north–south along x = 0 into the port gate; Maple Street runs west from it at z = 20.
+ * North is -z. Harbor Road runs north–south along x = 0; Maple Street runs west from it at z = 20; Main Street crosses
+ * the whole map at z = 240.
  */
-export class Town implements World {
+export class Town implements World, Site {
   readonly spawn = new Vector3(0, 0.02, 104);
   readonly spawnYaw = 0;
   readonly steel: SteelSpot[] = [];
   readonly botLanes: BotLane[] = [];
   readonly wallDummies: Vector3[] = [];
   readonly infiniteAmmo = false;
-  readonly welcome = 'Harbor Outskirts · suburb, gas station and port · 12 bots are hiding around the map · T refills ammo';
+  readonly welcome = 'Calvert · port, suburb, downtown, farm, rail yard and school · bots are hiding around the map · T refills ammo';
   readonly colliders;
   readonly foliage;
   readonly bounds = { x0: X0 + 2, x1: X1 - 2, z0: Z0 + 3, z1: Z1 - 2 };
-  /** Gas station forecourt, Maple Street, the port gate, the east field. */
+  /** Gas station forecourt, Maple Street, the port gate, the east field (districts add their own). */
   readonly stationAnchors: [number, number][] = [[14, 4], [-42, 27], [-14, -70], [44, 62]];
-  private b = new Builder();
-  private m: TownMaterials;
-  private rnd = mulberry32(2026);
+  readonly b = new Builder(160);
+  readonly m: TownMaterials;
+  readonly rnd = mulberry32(2026);
   private paved: Rect[] = [];
   private blocked: Rect[] = [];
+  private tallZones: Rect[] = [];
   private lines: Record<'white' | 'yellow', Material>;
   private grassCells: InstancedMesh[] = [];
   /** 0.5 m occupancy grid over the play area: 0 open ground, 1 paved, 2 paved edge, 3 blocked. */
@@ -64,15 +75,18 @@ export class Town implements World {
     this.gasStation();
     this.eastSide();
     this.port();
+    downtown(this);
+    farmland(this);
+    railYard(this);
     this.edges();
     this.nature();
     this.bots();
     this.b.finish();
     const grassRoot = new Group();
     r.scene.add(grassRoot);
-    const hi = r.quality === 'high';
+    const hi = r.quality !== 'low';
     this.rasterize();
-    this.grassCells = grass(grassRoot, this.m, X0 - 6, Z0 + 1, X1 + 6, Z1 + 8, hi ? 0.8 : 1.15, (x, z) => this.grassDensity(x, z), this.rnd);
+    this.grassCells = grass(grassRoot, this.m, X0 - 6, Z0 + 1, X1 + 6, Z1 + 8, hi ? 0.85 : 1.2, (x, z) => this.grassDensity(x, z), this.rnd);
     this.grassFar = hi ? 95 : 70;
   }
 
@@ -97,7 +111,7 @@ export class Town implements World {
   // ------------------------------------------------------------------------------------------------ helpers
 
   /** Flat decal-like plane with world-space UVs (roads, lots, markings). */
-  private flat(x0: number, z0: number, x1: number, z1: number, y: number, mat: Material, tile: number) {
+  flat(x0: number, z0: number, x1: number, z1: number, y: number, mat: Material, tile: number) {
     const g = new PlaneGeometry(x1 - x0, z1 - z0);
     g.rotateX(-Math.PI / 2);
     g.translate((x0 + x1) / 2, y, (z0 + z1) / 2);
@@ -115,7 +129,7 @@ export class Town implements World {
   }
 
   /** Painted road line from (x0, z0) to (x1, z1), axis aligned. */
-  private line(x0: number, z0: number, x1: number, z1: number, w: number, color: 'white' | 'yellow') {
+  line(x0: number, z0: number, x1: number, z1: number, w: number, color: 'white' | 'yellow') {
     const alongZ = Math.abs(z1 - z0) > Math.abs(x1 - x0), len = alongZ ? Math.abs(z1 - z0) : Math.abs(x1 - x0);
     const g = new PlaneGeometry(w, len);
     const uv = g.getAttribute('uv');
@@ -126,15 +140,22 @@ export class Town implements World {
     this.b.add(g, this.lines[color], false);
   }
 
-  private sidewalk(x0: number, z0: number, x1: number, z1: number) {
+  sidewalk(x0: number, z0: number, x1: number, z1: number) {
     this.b.box((x0 + x1) / 2, 0, (z0 + z1) / 2, x1 - x0, 0.14, z1 - z0, this.m.slab, 'concrete', 1.6);
     this.paved.push([x0, z0, x1, z1]);
   }
 
-  private inRect(x: number, z: number, list: Rect[], pad = 0) {
+  private within(x: number, z: number, list: Rect[], pad = 0) {
     for (const [a, b, c, d] of list) if (x >= a - pad && x <= c + pad && z >= b - pad && z <= d + pad) return true;
     return false;
   }
+
+  inRect(x: number, z: number, list: 'paved' | 'blocked', pad = 0) { return this.within(x, z, list === 'paved' ? this.paved : this.blocked, pad); }
+  pave(...r: Rect[]) { this.paved.push(...r); }
+  occupy(...r: Rect[]) { this.blocked.push(...r); }
+  tall(...r: Rect[]) { this.tallZones.push(...r); }
+  dummy(x: number, y: number, z: number) { this.wallDummies.push(new Vector3(x, y, z)); }
+  anchor(x: number, z: number) { this.stationAnchors.push([x, z]); }
 
   private static readonly GX0 = X0 - 8; private static readonly GZ0 = Z0; private static readonly GW = (X1 - X0 + 16) * 2;
   private static readonly GH = (Z1 - Z0 + 10) * 2;
@@ -162,6 +183,7 @@ export class Town implements World {
     const i = Math.floor((x - Town.GX0) * 2), j = Math.floor((z - Town.GZ0) * 2);
     const o = i >= 0 && j >= 0 && i < Town.GW && j < Town.GH ? this.occ[j * Town.GW + i] : 0;
     if (o === 3) return 0;
+    if (o === 0 && this.within(x, z, this.tallZones)) return 1.4;
     const patch = 0.5 + 0.5 * Math.sin(x * 0.13 + Math.sin(z * 0.09) * 2) * Math.sin(z * 0.11 - x * 0.03);
     // Grass pushing through cracks in paving, thicker along the edges.
     if (o === 1) return patch > 0.8 ? 0.06 : 0.015;
@@ -170,7 +192,7 @@ export class Town implements World {
     return 0.55 + patch * 0.45;
   }
 
-  private tree(x: number, z: number, kind: TreeKind = 'oak', scale = 1) {
+  tree(x: number, z: number, kind: TreeKind = 'oak', scale = 1) {
     tree(this.b, this.m, x, z, this.rnd, kind, scale);
     this.blocked.push([x - 0.4, z - 0.4, x + 0.4, z + 0.4]);
   }
@@ -179,14 +201,14 @@ export class Town implements World {
 
   private ground(r: Renderer) {
     // Big grass sheet with gentle colour variation; hills rise outside the playable area so there is no edge.
-    const x0 = -520, x1 = 520, z0 = QUAY, z1 = 560, seg = 130;
+    const x0 = -760, x1 = 760, z0 = QUAY, z1 = 820, seg = 190;
     const g = new PlaneGeometry(x1 - x0, z1 - z0, seg, Math.round(seg * (z1 - z0) / (x1 - x0)));
     g.rotateX(-Math.PI / 2);
     g.translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
     const pos = g.getAttribute('position'), uv = g.getAttribute('uv'), col: number[] = [];
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
-      const out = Math.max(Math.abs(x) - 135, z - 135, 0);
+      const out = Math.max(Math.abs(x) - (X1 + 15), z - (Z1 + 15), 0);
       const hill = out > 0 ? Math.min(out / 90, 1) ** 1.5 * (22 + 16 * Math.sin(x * 0.02) * Math.cos(z * 0.017)) : 0;
       pos.setY(i, hill - (out > 0 ? 0 : 0.002));
       uv.setXY(i, x / 2.4, -z / 2.4);
@@ -198,13 +220,13 @@ export class Town implements World {
     const mesh = new Mesh(g, this.m.grass);
     mesh.receiveShadow = true;
     this.b.root.add(mesh);
-    this.b.collide(-600, -5, QUAY, 600, 0, 600, 'dirt');
+    this.b.collide(-800, -5, QUAY, 800, 0, 800, 'dirt');
 
     // Sea and the quay wall.
-    const water = new Mesh(new PlaneGeometry(2400, 1400).rotateX(-Math.PI / 2).translate(0, -1.4, QUAY - 700), this.m.water);
+    const water = new Mesh(new PlaneGeometry(3000, 1400).rotateX(-Math.PI / 2).translate(0, -1.4, QUAY - 700), this.m.water);
     water.receiveShadow = true;
     this.b.root.add(water);
-    this.b.box(0, -4.5, QUAY - 0.5, 1040, 4.5, 1, this.m.concreteDark, null, 3, false);
+    this.b.box(0, -4.5, QUAY - 0.5, 1520, 4.5, 1, this.m.concreteDark, null, 3, false);
     void r;
   }
 
@@ -215,18 +237,18 @@ export class Town implements World {
     this.flat(-520, 15.5, -4.5, 24.5, 0.011, m.asphalt, 6);
     this.paved.push([-4.5, -62, 4.5, 560], [-520, 15.5, -4.5, 24.5]);
     // Sidewalks (with gaps for the gas station driveways).
-    this.sidewalk(-7, 24.5, -4.5, Z1 + 20);
+    this.sidewalk(-7, 24.5, -4.5, 143.5);
     this.sidewalk(-7, -60, -4.5, 13);
     this.sidewalk(4.5, -60, 7, 4);
     this.sidewalk(4.5, 12, 7, 30);
-    this.sidewalk(4.5, 38, 7, Z1 + 20);
-    this.sidewalk(X0 - 20, 13, -7, 15.5);
-    this.sidewalk(X0 - 20, 24.5, -7, 27);
+    this.sidewalk(4.5, 38, 7, 143.5);
+    this.sidewalk(CX0, 13, -7, 15.5);
+    this.sidewalk(CX0, 24.5, -7, 27);
     // Markings: faded double yellow, edge lines, stop line and crosswalks at the junction.
-    for (const dx of [-0.13, 0.13]) { this.line(dx, -60, dx, 11, 0.1, 'yellow'); this.line(dx, 29, dx, 200, 0.1, 'yellow'); }
-    for (const dz of [19.87, 20.13]) this.line(X0 - 30, dz, -14, dz, 0.1, 'yellow');
-    this.line(-4.1, -60, -4.1, 13, 0.12, 'white'); this.line(-4.1, 27, -4.1, 200, 0.12, 'white');
-    this.line(4.1, -60, 4.1, 200, 0.12, 'white');
+    for (const dx of [-0.13, 0.13]) { this.line(dx, -60, dx, 11, 0.1, 'yellow'); this.line(dx, 29, dx, 140, 0.1, 'yellow'); }
+    for (const dz of [19.87, 20.13]) { this.line(-520, dz, -134, dz, 0.1, 'yellow'); this.line(-122, dz, -14, dz, 0.1, 'yellow'); }
+    this.line(-4.1, -60, -4.1, 13, 0.12, 'white'); this.line(-4.1, 27, -4.1, 142, 0.12, 'white');
+    this.line(4.1, -60, 4.1, 142, 0.12, 'white');
     this.line(-9, 20.3, -9, 24.2, 0.45, 'white');
     for (let z = 16.2; z < 24.2; z += 0.95) this.line(-13.8, z, -11, z, 0.48, 'white');
     for (let x = -3.8; x < 4; x += 0.95) this.line(x, 10, x, 12.6, 0.48, 'white');
@@ -242,7 +264,7 @@ export class Town implements World {
     for (const [x, z] of [[1.8, 40], [-2, -20], [-40, 21], [-2, 90]]) new Placer(this.b, x, 0, z).cyl(0, 0, 0, 0.35, 0.02, m.steel, 16);
     // Power line down the west side of Harbor Road and along Maple Street, one pole snapped and lying in the street.
     let prev: Vector3[] | null = null;
-    for (let z = Z1 - 4; z > -58; z -= 30) {
+    for (let z = 136; z > -58; z -= 30) {
       const pts = powerPole(this.b, m, -8.2, z, 0, (this.rnd() - 0.5) * 0.05, this.rnd() < 0.3);
       if (prev) for (let i = 0; i < 3; i++) wire(this.b, m, prev[i], pts[i], 0.8 + this.rnd() * 0.4);
       prev = pts;
@@ -559,7 +581,8 @@ export class Town implements World {
     const m = this.m, b = this.b, rnd = this.rnd;
     this.flat(-520, QUAY, 520, -62, 0.012, m.slab, 6);
     this.paved.push([-520, QUAY, 520, -62]);
-    chainFence(b, m, X0 - 1, -62, X1 + 1, -62, 2.4, [[114.5, 127.5], [78, 81.5]]);
+    // Gaps (metres from the west end): fish docks lane, Maple-side gap, the main gate, Rail Road and the tracks.
+    chainFence(b, m, X0 - 1, -62, X1 + 1, -62, 2.4, [[57, 65], [198, 201.5], [234.5, 247.5], [364, 388]]);
     // Gate: barrier arm (snapped up), guard hut, jersey barriers.
     const gate = new Placer(b, 6, 0, -61.2, 0);
     gate.box(0, 0, 0, 0.35, 1.1, 0.35, m.white, 'metal', 1);
@@ -600,19 +623,22 @@ export class Town implements World {
 
   private edges() {
     const b = this.b, m = this.m;
-    b.clip(X0 - 2, 0, Z0, X0, 30, Z1 + 2);
-    b.clip(X1, 0, Z0, X1 + 2, 30, Z1 + 2);
-    b.clip(X0 - 2, 0, Z1, X1 + 2, 30, Z1 + 2);
-    b.clip(X0 - 2, -2, Z0 - 2, X1 + 2, 30, Z0 + 0.3);
-    // Road closed where Harbor Road and Maple Street leave the map.
-    for (const x of [-3, 0.1, 3.2]) jersey(b, m, x, Z1 - 1.5, Math.PI / 2 + (x % 2) * 0.05);
-    for (const z of [17, 20.1, 23.2]) jersey(b, m, X0 + 1.5, z, 0.04);
+    b.clip(X0 - 2, 0, Z0, X0, 40, Z1 + 2);
+    b.clip(X1, 0, Z0, X1 + 2, 40, Z1 + 2);
+    b.clip(X0 - 2, 0, Z1, X1 + 2, 40, Z1 + 2);
+    b.clip(X0 - 2, -2, Z0 - 2, X1 + 2, 40, Z0 + 0.3);
+    // Roads closed where they leave the map.
     const closed = decalMat(m, 'closed', 512, 128, (ctx, w, h) => {
       for (let i = -4; i < 20; i++) { ctx.fillStyle = i % 2 ? '#d8d4c8' : '#c8641e'; ctx.beginPath(); ctx.moveTo(i * 40, 0); ctx.lineTo(i * 40 + 40, 0); ctx.lineTo(i * 40 + 80, h); ctx.lineTo(i * 40 + 40, h); ctx.fill(); }
       ctx.fillStyle = '#111'; ctx.fillRect(w * 0.18, h * 0.22, w * 0.64, h * 0.56);
       ctx.fillStyle = '#e8e4da'; ctx.font = 'bold 52px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ROAD CLOSED', w / 2, h / 2 + 3);
     }, { wear: 0.8 });
+    for (const x of [-3, 0.1, 3.2]) jersey(b, m, x, Z1 - 1.5, Math.PI / 2 + (x % 2) * 0.05);
     signPost(b, 5.5, Z1 - 2, Math.PI, closed, m.steel, 2, 0.5, 1.6);
+    for (const z of [17, 20.1, 23.2]) jersey(b, m, X0 + 1.5, z, 0.04);
+    for (const z of [236.5, 239.6, 242.7]) { jersey(b, m, X0 + 1.5, z, -0.03); jersey(b, m, X1 - 1.5, z, 0.05); }
+    for (const x of [-131, -128, -125]) jersey(b, m, x, Z1 - 1.5, Math.PI / 2);
+    for (const x of [125, 128, 131]) jersey(b, m, x, Z1 - 1.5, Math.PI / 2 + 0.06);
   }
 
   // ------------------------------------------------------------------------------------------------ nature
@@ -632,30 +658,31 @@ export class Town implements World {
       const n = Math.round((x1 - x0) * (z1 - z0) * dens);
       for (let k = 0; k < n; k++) {
         const x = x0 + rnd() * (x1 - x0), z = z0 + rnd() * (z1 - z0);
-        if (this.inRect(x, z, this.blocked, 2) || this.inRect(x, z, this.paved, 1.5)) continue;
+        if (this.within(x, z, this.blocked, 2) || this.within(x, z, this.paved, 1.5)) continue;
         const r = rnd();
         this.tree(x, z, r < 0.12 ? 'dead' : r < 0.35 ? 'tall' : 'oak', 0.8 + rnd() * 0.5);
       }
       for (let k = 0; k < n * 2.5; k++) {
         const x = x0 + rnd() * (x1 - x0), z = z0 + rnd() * (z1 - z0);
-        if (this.inRect(x, z, this.blocked, 0.8) || this.inRect(x, z, this.paved, 0.5)) continue;
+        if (this.within(x, z, this.blocked, 0.8) || this.within(x, z, this.paved, 0.5)) continue;
         bush(this.b, this.m, x, z, rnd, 0.7 + rnd() * 0.8);
       }
     }
     // Along the fences and the port fence.
     for (let x = X0 + 4; x < X1 - 4; x += 5 + rnd() * 6) {
-      if (Math.abs(x) < 9) continue;
-      if (!this.inRect(x, -60.5, this.blocked)) bush(this.b, this.m, x, -60.2 + rnd() * 0.8, rnd, 0.9 + rnd() * 0.5);
+      if (Math.abs(x) < 9 || Math.abs(x + 180) < 6 || (x > 120 && x < 150)) continue;
+      if (!this.within(x, -60.5, this.blocked)) bush(this.b, this.m, x, -60.2 + rnd() * 0.8, rnd, 0.9 + rnd() * 0.5);
     }
     // Tree line outside the map so the edge reads as woods, not a wall.
-    for (let k = 0; k < 170; k++) {
+    for (let k = 0; k < 300; k++) {
       const side = k % 3;
       let x: number, z: number;
-      if (side === 0) { x = X0 - 4 - rnd() * 60; z = -50 + rnd() * 220; }
-      else if (side === 1) { x = X1 + 4 + rnd() * 60; z = -50 + rnd() * 220; }
-      else { x = -170 + rnd() * 340; z = Z1 + 4 + rnd() * 50; }
-      if (Math.abs(x) < 8 && z > Z1) continue;
-      if (z > 13 && z < 27 && x < X0) continue;
+      if (side === 0) { x = X0 - 5 - rnd() * 70; z = -40 + rnd() * 460; }
+      else if (side === 1) { x = X1 + 5 + rnd() * 70; z = -40 + rnd() * 460; }
+      else { x = X0 - 60 + rnd() * (X1 - X0 + 120); z = Z1 + 5 + rnd() * 60; }
+      // Keep the roads running out of the map clear.
+      if (Math.abs(z - 20) < 8 || Math.abs(z - 240) < 9) if (Math.abs(x) > X1) continue;
+      if (z > Z1 && (Math.abs(x) < 9 || Math.abs(Math.abs(x) - 128) < 8 || Math.abs(x - 140) < 6)) continue;
       tree(this.b, this.m, x, z, rnd, rnd() < 0.5 ? 'tall' : 'oak', 1 + rnd() * 0.5);
     }
   }
@@ -664,6 +691,9 @@ export class Town implements World {
 
   private bots() {
     const d = this.wallDummies;
+    // The districts offer more standing spots than we want bots: keep two in three, spread over every district.
+    const offered = d.splice(0);
+    offered.forEach((v, i) => { if (i % 3 !== 2) d.push(v); });
     d.push(new Vector3(41, 0.1, 23.5));     // inside the store, by the counter
     d.push(new Vector3(45, 3.95, 26));      // on the store roof
     d.push(new Vector3(-53, 3.55, 1.5));    // upstairs in the yellow house

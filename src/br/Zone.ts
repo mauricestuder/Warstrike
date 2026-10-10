@@ -11,7 +11,10 @@ interface Phase {
   dps: number;
 }
 
-/** Five phases, about five and a half minutes in total. The first wait covers the flight and the drop. */
+/**
+ * Five phases, about five and a half minutes in total on a map whose first circle is 175 m; bigger maps scale the
+ * radii with the map and stretch the timings a little. The first wait covers the flight and the drop.
+ */
 const PHASES: Phase[] = [
   { wait: 80, shrink: 40, r: 105, dps: 2 },
   { wait: 40, shrink: 30, r: 62, dps: 4 },
@@ -69,11 +72,14 @@ export class Zone {
   private lastStage = '';
   /** Called when a phase starts closing ("shrink") or a new circle is revealed ("wait"). */
   onStage: (stage: 'wait' | 'shrink' | 'final', phase: number) => void = () => {};
+  private phases: Phase[];
 
   constructor(scene: Scene, start: Vector2, startR: number, bounds: { x0: number; x1: number; z0: number; z1: number }, rnd: () => number) {
+    const k = startR / 175, time = 1 + (k - 1) * 0.35;
+    this.phases = PHASES.map((p) => ({ ...p, r: p.r * k, wait: Math.round(p.wait * time), shrink: Math.round(p.shrink * time) }));
     this.centers.push(start.clone());
     this.radii.push(startR);
-    for (const p of PHASES) {
+    for (const p of this.phases) {
       const pc = this.centers[this.centers.length - 1], pr = this.radii[this.radii.length - 1];
       let c = pc.clone();
       // A random point that keeps the new circle inside the old one and on land, away from the map edge.
@@ -100,19 +106,19 @@ export class Zone {
   /** Which phase we're in, whether it's holding or shrinking, and seconds left in that stage. */
   get state(): { phase: number; stage: 'wait' | 'shrink' | 'final'; left: number; k: number } {
     let t = this.time;
-    for (let i = 0; i < PHASES.length; i++) {
-      const p = PHASES[i];
+    for (let i = 0; i < this.phases.length; i++) {
+      const p = this.phases[i];
       if (t < p.wait) return { phase: i, stage: 'wait', left: p.wait - t, k: 0 };
       t -= p.wait;
       if (t < p.shrink) return { phase: i, stage: 'shrink', left: p.shrink - t, k: t / p.shrink };
       t -= p.shrink;
     }
-    return { phase: PHASES.length, stage: 'final', left: 0, k: 1 };
+    return { phase: this.phases.length, stage: 'final', left: 0, k: 1 };
   }
 
   get dps() {
     const s = this.state;
-    return s.phase < PHASES.length ? PHASES[s.phase].dps : FINAL_DPS;
+    return s.phase < this.phases.length ? this.phases[s.phase].dps : FINAL_DPS;
   }
 
   /** The circle the gas is heading to (the current one while holding). */

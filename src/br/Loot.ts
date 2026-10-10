@@ -166,8 +166,8 @@ export class Loot {
     return !this.colliders.overlaps(new Vector3(p.x - w / 2, p.y + 0.02, p.z - d / 2), new Vector3(p.x + w / 2, p.y + h, p.z + d / 2));
   }
 
-  /** Fills the map: floor loot, supply boxes and buy stations near the given anchors. */
-  populate(spots: Spot[], stationAnchors: [number, number][]) {
+  /** Fills the map: floor loot, supply boxes and buy stations near the given anchors. `scale` grows the counts with the map. */
+  populate(spots: Spot[], stationAnchors: [number, number][], scale = 1) {
     const rnd = this.rnd;
     // Buy stations: the open street-level spot nearest each anchor with room around it.
     for (const [ax, az] of stationAnchors) {
@@ -177,11 +177,11 @@ export class Loot {
     }
     // Supply boxes, indoors and out, spread around the whole map.
     const boxSpots = Loot.spread(spots.filter((s) => this.clear(s.pos, 1.6, 1.0, 1.6)
-      && !this.stations.some((st) => st.pos.distanceTo(s.pos) < 6)), rnd, 22, 22, 22);
+      && !this.stations.some((st) => st.pos.distanceTo(s.pos) < 6)), rnd, 22, 22, Math.round(22 * scale));
     for (const s of boxSpots) this.addSupply(s.pos, Math.round(rnd() * 4) * Math.PI / 2 + (rnd() - 0.5) * 0.3);
     // Floor loot.
     const used = (p: Vector3) => this.boxes.some((b) => b.pos.distanceTo(p) < 2) || this.stations.some((s) => s.pos.distanceTo(p) < 2.5);
-    const floor = Loot.spread(spots.filter((s) => !used(s.pos)), rnd, 4, 9, 230);
+    const floor = Loot.spread(spots.filter((s) => !used(s.pos)), rnd, 4, 9, Math.round(230 * scale));
     for (const s of floor) {
       const k = rnd();
       if (k < 0.45) {

@@ -305,9 +305,17 @@ export class Bot implements Target {
     return { dealt, killed, armorBroke, steel: false };
   }
 
+  /** Whether the body parts currently cast shadows (only bots near the camera do: 16 parts × every shadow cascade). */
+  private shadows = true;
+
   update(dt: number, viewer: Vector3) {
     this.root.visible = !this.hidden;
     if (this.hidden) return;
+    const near = this.position.distanceToSquared(viewer) < 60 * 60;
+    if (near !== this.shadows) {
+      this.shadows = near;
+      this.body.traverse((o) => { if ((o as Mesh).isMesh) o.castShadow = near; });
+    }
     if (this.hp <= 0 && !this.respawn) {
       // Stays where it fell.
       this.root.position.copy(this.position);
@@ -369,7 +377,9 @@ export class Bot implements Target {
 type THREE_Geo = ConstructorParameters<typeof Mesh>[0];
 
 const NAMES = ['Kowalski', 'Ghost_77', 'Reyes', 'NightOwl', 'Viktor', 'Hawk', 'Mendez', 'Sly', 'Bravo-6', 'Tanaka', 'Rook',
-  'Okafor', 'Dutch', 'Wolfie', 'Sato', 'Frost'];
+  'Okafor', 'Dutch', 'Wolfie', 'Sato', 'Frost', 'Lazarus', 'Kilo-2', 'Moreau', 'Jinx', 'Abara', 'Petrov', 'Nova', 'Halvorsen',
+  'Ruiz', 'Static', 'Brennan', 'Ivanova', 'Crow', 'Mako', 'Delgado', 'Hex', 'Lindqvist', 'Ortega', 'Zulu-9', 'Banks', 'Kaito',
+  'Riptide', 'Novak', 'Ash'];
 
 export class Targets {
   readonly list: Target[] = [];

@@ -1,19 +1,20 @@
 import {
-  ACESFilmicToneMapping, AmbientLight, Color, DirectionalLight, FogExp2, HalfFloatType, HemisphereLight, Material,
-  PCFShadowMap, PerspectiveCamera, PMREMGenerator, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer,
+  ACESFilmicToneMapping, AmbientLight, Color, DirectionalLight, FogExp2, HalfFloatType, HemisphereLight, Material, Mesh,
+  Object3D, PCFShadowMap, PerspectiveCamera, PMREMGenerator, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer,
   WebGLRenderTarget,
 } from 'three';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { Quality } from '../core/Settings';
 
-/** Afternoon sun behind the shooter's right shoulder: downrange is lit, never into the glare. */
-const SUN_ELEVATION = 38, SUN_AZIMUTH = 60;
+/** High afternoon sun behind the range shooter's right shoulder (south-east on the big map), high enough to keep glare off the horizon. */
+const SUN_ELEVATION = 50, SUN_AZIMUTH = 60;
 export const HAZE = new Color(0xb8c4cf);
 
 /**
@@ -36,7 +37,7 @@ export class Renderer {
   private sky: Sky;
 
   constructor(readonly quality: Quality) {
-    const high = quality === 'high';
+    const high = quality !== 'low', ultra = quality === 'ultra';
     this.gl = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
     this.gl.setPixelRatio(Math.min(devicePixelRatio, high ? 2 : 1));
     this.gl.setSize(innerWidth, innerHeight);
@@ -61,10 +62,10 @@ export class Renderer {
       const s = new Sky();
       s.scale.setScalar(1600); // follows the camera, so this only has to fit inside the far plane
       const u = s.material.uniforms;
-      u.turbidity.value = 4.5;
+      u.turbidity.value = 3.2;
       u.rayleigh.value = 1.4;
-      u.mieCoefficient.value = 0.004;
-      u.mieDirectionalG.value = 0.82;
+      u.mieCoefficient.value = 0.0022;
+      u.mieDirectionalG.value = 0.86;
       u.cloudCoverage.value = 0.35;
       u.showSunDisc.value = sunDisc ? 1 : 0;
       u.sunPosition.value.copy(toSun);
@@ -84,12 +85,12 @@ export class Renderer {
     this.sky = sky;
     this.scene.environment = env;
     this.scene.environmentIntensity = 0.55;
-    this.scene.fog = new FogExp2(HAZE, 0.0019);
+    this.scene.fog = new FogExp2(HAZE, 0.0017);
 
     this.scene.add(new HemisphereLight(0xcfe0f5, 0x5a5040, 0.35));
     if (high) {
       this.csm = new CSM({
-        maxFar: 260, cascades: 3, mode: 'practical', parent: this.scene, shadowMapSize: 2048,
+        maxFar: ultra ? 420 : 260, cascades: ultra ? 4 : 3, mode: 'practical', parent: this.scene, shadowMapSize: 2048,
         lightDirection: this.sunDir, camera: this.camera, lightIntensity: 3.2, lightMargin: 120, shadowBias: -0.00012,
       });
       this.csm.fade = true;
@@ -118,11 +119,30 @@ export class Renderer {
     const rt = new WebGLRenderTarget(size.x, size.y, { type: HalfFloatType, samples: high ? 4 : 0 });
     this.composer = new EffectComposer(this.gl, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    if (ultra) {
+      // Ground-truth ambient occlusion on the world only (the weapon pass is drawn on top afterwards).
+      const ao = new GTAOPass(this.scene, this.camera, size.x, size.y);
+      // Its depth/normal pass draws every mesh solid: leave alpha-tested cards (leaves, corn, chain-link) and see-through
+      // things (the gas wall) out of it, or they'd shade the world as opaque squares.
+      const hook = ao as unknown as { _overrideVisibility(): void; _visibilityCache: Object3D[] };
+      const base = hook._overrideVisibility.bind(ao);
+      hook._overrideVisibility = () => {
+        base();
+        this.scene.traverse((o) => {
+          const mat = (o as Mesh).material as Material | undefined;
+          if ((o as Mesh).isMesh && o.visible && mat && (mat.alphaTest > 0 || mat.transparent)) { o.visible = false; hook._visibilityCache.push(o); }
+        });
+      };
+      ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 12 });
+      ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+      ao.blendIntensity = 0.9;
+      this.composer.addPass(ao);
+    }
     const vmPass = new RenderPass(this.vmScene, this.vmCamera);
     vmPass.clear = false;
     vmPass.clearDepth = true;
     this.composer.addPass(vmPass);
-    this.bloom = new UnrealBloomPass(new Vector2(innerWidth, innerHeight), 0.22, 0.4, 1.1);
+    this.bloom = new UnrealBloomPass(new Vector2(innerWidth, innerHeight), 0.16, 0.3, 1.6);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     if (!high) this.composer.addPass(new SMAAPass());

@@ -25,7 +25,7 @@ const SHOP: ShopItem[] = [
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 /**
- * One battle royale match on Harbor Outskirts: the plane flight and drop, the gas, health and armour plates, loot,
+ * One battle royale match on Calvert: the plane flight and drop, the gas, health and armour plates, loot,
  * supply boxes, buy stations, the kill feed and the win / lose screen. The game calls `update` every frame.
  */
 export class Match {
@@ -57,6 +57,7 @@ export class Match {
   readonly stats = { kills: 0, damage: 0, taken: 0, cash: 0, loot: 0, longest: 0, time: 0, boxes: 0 };
   private bounds: { x0: number; x1: number; z0: number; z1: number };
   private center: Vector3;
+  private mapHalf: number;
 
   constructor(private g: Game) {
     const w = g.world, rnd = Math.random;
@@ -65,15 +66,18 @@ export class Match {
     this.center = new Vector3((b.x0 + b.x1) / 2, 0, (b.z0 + b.z1) / 2);
     this.loot = new Loot(g.renderer, w.colliders, rnd);
     const spots = Loot.findSpots(w.colliders, b, 2.2, rnd);
-    this.loot.populate(spots, w.stationAnchors ?? []);
-    this.zone = new Zone(g.renderer.scene, new Vector2(this.center.x, this.center.z), 175, b, rnd);
+    // The first map was about 236 m across; loot counts and the first circle grow with the map.
+    const span = Math.max(b.x1 - b.x0, b.z1 - b.z0), area = (b.x1 - b.x0) * (b.z1 - b.z0);
+    this.loot.populate(spots, w.stationAnchors ?? [], Math.min(3.6, area / 55500));
+    this.zone = new Zone(g.renderer.scene, new Vector2(this.center.x, this.center.z), span * 0.74, b, rnd);
     this.zone.onStage = (stage, phase) => {
       if (stage === 'shrink') { g.hud.feed('<b>The gas is closing in</b> — get inside the white circle'); g.sfx.gasAlarm(); }
       else if (stage === 'wait') g.hud.feed(`Phase ${phase + 1} · new circle on the map (M)`);
       else { g.hud.feed('<b>Final circle</b> — the gas is everywhere'); g.sfx.gasAlarm(); }
     };
     this.plane = new Plane(g.renderer, this.center, b, rnd);
-    this.map = new Minimap(this.center.x, this.center.z, 128);
+    this.mapHalf = span / 2 + 10;
+    this.map = new Minimap(this.center.x, this.center.z, this.mapHalf);
     this.map.capture(g.renderer, (on) => w.mapView?.(on));
     g.player.area = b;
     for (const bot of g.targets.bots) bot.respawn = false;
@@ -115,7 +119,7 @@ export class Match {
     }
     if (this.phase === 'plane') {
       const canJump = this.plane.s > this.plane.enterS - 40;
-      hud.setPrompt(canJump ? '<kbd>SPACE</kbd>Jump' : 'Approaching Harbor Outskirts…');
+      hud.setPrompt(canJump ? '<kbd>SPACE</kbd>Jump' : 'Approaching Calvert…');
       if ((canJump && input.wasPressed('Space')) || this.plane.s > this.plane.exitS - 20) this.jump();
     } else if (this.phase === 'sky') {
       const fall = -p.vel.y;
@@ -175,7 +179,7 @@ export class Match {
     }
     const marks = this.marks();
     this.map.draw(this.mini, { x: marks.plane ? marks.plane.pos.x : p.pos.x, z: marks.plane ? marks.plane.pos.z : p.pos.z }, 70, marks);
-    if (this.bigMap) this.map.draw(this.big, { x: this.center.x, z: this.center.z }, 128, marks);
+    if (this.bigMap) this.map.draw(this.big, { x: this.center.x, z: this.center.z }, this.mapHalf, marks);
 
     // --- Win ---
     if (this.hp > 0 && this.g.targets.bots.every((bot) => !bot.alive)) this.end(true);
