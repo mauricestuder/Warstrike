@@ -2,7 +2,7 @@ import {
   AdditiveBlending, BoxGeometry, CanvasTexture, CapsuleGeometry, CylinderGeometry, DoubleSide, Group, Mesh,
   MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, SphereGeometry, TorusGeometry, Vector3, type Scene,
 } from 'three';
-import { clamp, damp, smoothstep } from '../core/math';
+import { clamp, damp, lerp, smoothstep } from '../core/math';
 import type { GunId, WeaponId } from './defs';
 
 interface GunModel {
@@ -318,6 +318,8 @@ function flashTexture() {
 export interface VmState {
   ads: number;
   sprint: number;
+  /** Tactical sprint: gun tipped up toward the sky. */
+  tac: number;
   crouch: number;
   slide: number;
   speed: number;
@@ -367,6 +369,12 @@ export class ViewModel {
   private bobT = 0;
   private landDip = 0; private landV = 0;
   private pumpT = -1;
+  // Smoothed pose weights, so poses blend instead of snapping when you start or stop sprinting, crouch or jump.
+  private sprintK = 0;
+  private tacK = 0;
+  private crouchK = 0;
+  private airK = 0;
+  private bobAmp = 0;
 
   constructor(scene: Scene) {
     const accent = () => new MeshStandardMaterial({ color: TAN, roughness: 0.7, metalness: 0 });
@@ -465,8 +473,13 @@ export class ViewModel {
     this.swayX = damp(this.swayX, clamp(-mouseDX * 0.0009, -0.05, 0.05) * adsK, 10, dt);
     this.swayY = damp(this.swayY, clamp(mouseDY * 0.0009, -0.05, 0.05) * adsK, 10, dt);
 
-    if (s.grounded && s.speed > 0.3) this.bobT += dt * (s.sprint > 0.5 ? 13 : 9.5) * Math.min(1.2, s.speed / 4.8);
-    const bobAmp = (s.grounded ? Math.min(1.3, s.speed / 5) : 0) * adsK;
+    this.sprintK = damp(this.sprintK, s.sprint, s.sprint > this.sprintK ? 7 : 10, dt);
+    this.tacK = damp(this.tacK, s.tac, 6, dt);
+    this.crouchK = damp(this.crouchK, s.crouch, 9, dt);
+    this.airK = damp(this.airK, s.grounded ? 0 : 1, 7, dt);
+    if (s.grounded && s.speed > 0.3) this.bobT += dt * lerp(9.5, 13, this.sprintK) * Math.min(1.2, s.speed / 4.8);
+    this.bobAmp = damp(this.bobAmp, s.grounded ? Math.min(1.3, s.speed / 5) : 0, 8, dt);
+    const bobAmp = this.bobAmp * adsK;
     const bobX = Math.sin(this.bobT) * 0.012 * bobAmp;
     const bobY = -Math.abs(Math.cos(this.bobT)) * 0.012 * bobAmp;
 
@@ -477,18 +490,23 @@ export class ViewModel {
     const pos = hip.lerp(ads, ease);
     let rx = 0, ry = 0, rz = 0;
 
-    // Sprint: gun tucked down and canted.
-    const sp = s.sprint * (1 - s.ads);
+    // Everything below that moves the gun off its sight line fades out while aiming, so the dot stays on the crosshair.
+    const free = 1 - s.ads;
+    // Sprint: gun tucked down and canted. Tactical sprint: muzzle tipped up at the sky.
+    const tac = this.tacK * this.sprintK * free, sp = this.sprintK * free - tac;
     pos.x += sp * -0.04; pos.y += sp * -0.05; pos.z += sp * 0.04;
     rx += sp * -0.35; ry += sp * 0.6; rz += sp * 0.25;
-    rx += Math.sin(this.bobT * 2) * 0.03 * sp;
+    rx += Math.sin(this.bobT * 2) * 0.03 * (sp + tac);
+    pos.x -= tac * 0.06; pos.y += tac * 0.02; pos.z += tac * 0.06;
+    rx += tac * 0.85; ry += tac * 0.25; rz += tac * 0.45;
 
     // Slide: roll the gun in.
-    rz += s.slide * 0.35 * (1 - s.ads);
-    pos.x -= s.slide * 0.03;
+    rz += s.slide * 0.35 * free;
+    pos.x -= s.slide * 0.03 * free;
 
-    // Crouch: slight cant.
-    rz += s.crouch * 0.06 * (1 - s.ads);
+    // Crouch: slight cant. In the air the gun floats up a little.
+    rz += this.crouchK * 0.06 * free;
+    pos.y += this.airK * 0.015 * free; rx += this.airK * 0.04 * free;
 
     // Reload: tilt the gun, drop the mag and bring a new one back.
     const magPos = m.magHome.clone();
@@ -527,9 +545,9 @@ export class ViewModel {
         const a = this.fists.arms[i], side = i === 0 ? -1 : 1;
         const t = this.punchT >= 0 && this.punchSide === i ? this.punchT : -1;
         const e = t < 0 ? 0 : t < 0.3 ? smoothstep(0, 0.3, t) : 1 - smoothstep(0.3, 1, t);
-        const pump = Math.sin(this.bobT + i * Math.PI) * s.sprint;
+        const pump = Math.sin(this.bobT + i * Math.PI) * this.sprintK;
         a.position.set((side < 0 ? -0.391 : 0.061) - side * e * 0.08, -0.083 + e * 0.06 + pump * 0.03, 0.2 - e * 0.26 + pump * 0.04);
-        a.rotation.set(0.35 - e * 0.3 + s.sprint * 0.3 + pump * 0.2, side * (0.18 + e * 0.08), side * (-0.15 - e * 0.1));
+        a.rotation.set(0.35 - e * 0.3 + this.sprintK * 0.3 + pump * 0.2, side * (0.18 + e * 0.08), side * (-0.15 - e * 0.1));
       }
     }
 
@@ -546,7 +564,7 @@ export class ViewModel {
     }
 
     pos.x += this.swayX + bobX;
-    pos.y += this.swayY + bobY + this.landDip;
+    pos.y += this.swayY + bobY + this.landDip * (1 - s.ads * 0.9);
     pos.z += this.kickZ;
     rx += this.kickP + this.swayY * 2;
     ry += this.kickYaw + this.swayX * 2;

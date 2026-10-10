@@ -3,8 +3,12 @@ export type Quality = 'low' | 'high' | 'ultra';
 export interface Settings {
   /** Degrees of turn per mouse count ×100 (Valorant/CS style number). */
   sens: number;
-  /** Multiplier applied while aiming down sights (1 = same feel, scaled by zoom). */
+  /** Multiplier while aiming down red dots and iron sights (1 = same feel as hip fire, matched to the zoom). */
   adsSens: number;
+  /** Multiplier while looking through the sniper scope (1 = matched to the zoom). */
+  scopeSens: number;
+  /** Third-person (over the shoulder) or first-person camera. Aiming down sights always goes to first person. */
+  view: 'third' | 'first';
   fov: number;
   quality: Quality;
   volume: number;
@@ -12,7 +16,7 @@ export interface Settings {
 }
 
 const KEY = 'warstrike.settings';
-const DEFAULTS: Settings = { sens: 2.2, adsSens: 1, fov: 90, quality: 'high', volume: 0.7, showFps: true };
+const DEFAULTS: Settings = { sens: 2.2, adsSens: 1, scopeSens: 1, view: 'third', fov: 90, quality: 'high', volume: 0.7, showFps: true };
 
 export function loadSettings(): Settings {
   try {

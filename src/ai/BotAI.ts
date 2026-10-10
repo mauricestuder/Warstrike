@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import { clamp } from '../core/math';
 import type { Game } from '../Game';
 import type { Match } from '../br/Match';
-import type { LootItem } from '../br/Loot';
+import { GUN_SHIFT, type LootItem } from '../br/Loot';
 import { Player, type Controls } from '../player/Player';
 import type { Bot, Zone as HitZone } from '../targets/Targets';
 import { falloffMul, GUNS, HANDS, rarityDef, type GunDef, type GunId, type Rarity } from '../weapons/defs';
@@ -204,8 +204,18 @@ export class BotAI {
       b.ctl.pressed.clear();
       bot.position.copy(b.pos);
       bot.yaw = b.mover.yaw + Math.PI;
-      bot.moveSpeed = b.mover.onGround ? b.mover.horizSpeed : 0;
+      bot.vel.copy(b.mover.vel);
+      bot.grounded = b.mover.onGround;
+      bot.sprinting = b.mover.sprinting;
       bot.chute = b.mover.skydive === 'chute';
+      bot.sky = b.state === 'ground' ? 'none' : b.mover.skydive === 'none' ? 'freefall' : b.mover.skydive;
+      // Aim pitch: toward the chest of whoever it's fighting, otherwise level.
+      let pitch = 0;
+      if (b.target && b.visible) {
+        const c = this.foeChest(b.target, tE), e = bot.eye(tF);
+        pitch = Math.atan2(c.y - e.y, Math.hypot(c.x - e.x, c.z - e.z));
+      }
+      bot.pitch = pitch;
     }
   }
 
@@ -553,7 +563,7 @@ export class BotAI {
 
   private equip(b: Brain, id: GunId, rarity: Rarity, mag: number) {
     b.gun = { id, rarity, def: rarityDef(id, rarity), mag: mag > 0 ? mag : GUNS[id].mag };
-    b.bot.holdGun(this.m.loot.gunModel(id, rarity));
+    b.bot.holdGun(this.m.loot.gunModel(id, rarity), id, GUN_SHIFT[id]);
   }
 
   private giveGun(b: Brain, rarity: Rarity) {
@@ -634,6 +644,7 @@ export class BotAI {
 
     const range = RANGE[gun.id][0] * 1.3;
     const muzzle = b.bot.muzzle(new Vector3());
+    b.bot.shotT = 0;
     const cam = this.g.renderer.camera.position;
     const near = muzzle.distanceToSquared(cam) < 90 * 90;
     if (near) this.g.fx.muzzle(muzzle);

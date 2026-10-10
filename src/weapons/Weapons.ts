@@ -42,6 +42,15 @@ export class Weapons {
   melee: (dir: Vector3) => boolean = () => false;
   /** Called on every shot you fire (bots hear it). */
   onShot: () => void = () => {};
+  /**
+   * Third person: where a shot really starts. Given the camera's aim direction it returns the origin (your head) and
+   * turns `dir` toward whatever the crosshair is on, or returns null to fire from the camera (first person).
+   */
+  aimFrom: ((dir: Vector3) => Vector3 | null) | null = null;
+  /** Third person: the world-space muzzle of the gun in your character's hands (null: use the view model's). */
+  muzzleAt: ((out: Vector3) => Vector3) | null = null;
+  /** Counts shots fired, for the body animation's recoil. */
+  shots = 0;
   private punchCd = 0;
   private punchPending = -1;
   ads = 0;
@@ -98,6 +107,8 @@ export class Weapons {
   get current() { return this.cur; }
   get onHands() { return this.cur === this.hands; }
   get reloading() { return this.reloadT >= 0; }
+  /** 0..1 reload progress, or -1. */
+  get reloadProgress() { return this.reloadT >= 0 ? this.reloadT / this.reloadDur : -1; }
   get scoped() { return this.def.scope && this.ads > 0.92; }
 
   private select(g: GunState, instant = false) {
@@ -282,7 +293,7 @@ export class Weapons {
     this.updateBreath(dt, input);
 
     this.vm.update(dt, {
-      ads: this.ads, sprint: p.sprinting ? 1 : 0, crouch: p.stance === 'crouch' ? 1 : 0, slide: p.slideT, speed: p.horizSpeed,
+      ads: this.ads, sprint: p.sprinting ? 1 : 0, tac: p.tacSprinting ? 1 : 0, crouch: p.stance === 'crouch' ? 1 : 0, slide: p.slideT, speed: p.horizSpeed,
       grounded: p.onGround, reload: this.reloading ? this.reloadT / this.reloadDur : -1, reloadEmpty: this.reloadEmpty,
       draw: this.drawT, inspect: this.inspectT, hidden: this.scoped || this.hidden, lower: this.lower, plate: this.plateT,
       chute: this.chute, pitch: this.pitch,
@@ -303,9 +314,10 @@ export class Weapons {
     const up = new Vector3().crossVectors(right, dir).normalize();
     dir.addScaledVector(right, Math.tan(r) * Math.cos(a)).addScaledVector(up, Math.tan(r) * Math.sin(a)).normalize();
 
+    // Third person: the shot leaves your head toward what the crosshair is on, not from the camera behind you.
+    const origin = this.aimFrom?.(dir) ?? camera.position;
     // Muzzle position in world space (viewmodel lives in camera space).
-    const muzzle = this.vm.muzzleLocal(this.tmpMuzzle);
-    camera.localToWorld(muzzle);
+    const muzzle = this.muzzleAt ? this.muzzleAt(this.tmpMuzzle) : camera.localToWorld(this.vm.muzzleLocal(this.tmpMuzzle));
     if (d.pellets && d.pellets > 1) {
       // A shell: pellets scattered in a cone (a bit tighter aimed), counted as one hit per target.
       const cone = (d.pelletSpread ?? 0) * lerp(1, 0.75, this.ads), pd = new Vector3();
@@ -314,12 +326,13 @@ export class Weapons {
         // The first pellet goes dead centre; the rest spread evenly-ish around it.
         const pr = k === 0 ? 0 : cone * Math.sqrt((k - 0.5 + Math.random()) / (d.pellets - 1)), pa = (k / d.pellets) * Math.PI * 2 + Math.random() * 0.8;
         pd.copy(dir).addScaledVector(right, Math.tan(pr) * Math.cos(pa)).addScaledVector(up, Math.tan(pr) * Math.sin(pa)).normalize();
-        this.ballistics.fire(camera.position, pd, d, muzzle);
+        this.ballistics.fire(origin, pd, d, muzzle);
       }
       this.ballistics.volley(false);
-    } else this.ballistics.fire(camera.position, dir, d, muzzle);
+    } else this.ballistics.fire(origin, dir, d, muzzle);
     this.fx.muzzle(muzzle);
     this.sfx.shot(g.base as GunId);
+    this.shots++;
     this.onShot();
 
     // Recoil: follow the gun's pattern, then loop its last third.

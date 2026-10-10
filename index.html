@@ -9,6 +9,7 @@
   <body>
     <div id="hud">
       <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
+      <svg id="magarc" viewBox="-60 -60 120 120"><path class="reload" pathLength="1" /></svg>
       <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
       <div id="readout"></div>
       <div id="hint"></div>
@@ -31,7 +32,7 @@
     <div id="menu">
       <div class="panel">
         <h1>WAR<span>STRIKE</span></h1>
-        <p class="sub" id="sub">Build 0.7 · choose a mode</p>
+        <p class="sub" id="sub">Build 0.8 · choose a mode</p>
         <div id="maps">
           <button class="map br" data-map="br"><b>BATTLE ROYALE</b><span>Drop from the plane into Calvert · port, downtown, farm, rail yard and school · loot guns, plates and cash · outlast the gas and 37 bots</span></button>
           <button class="map" data-map="range"><b>GUN RANGE</b><span>Steel out to 300 m, strafing bots, wallbang lane, movement course · infinite ammo</span></button>
@@ -42,7 +43,11 @@
         <div class="tabs"><button data-tab="settings" class="on">Settings</button><button data-tab="controls">Controls</button></div>
         <div id="tab-settings" class="tab on">
           <label>Mouse sensitivity <output id="o-sens"></output><input id="s-sens" type="range" min="0.2" max="8" step="0.05" /></label>
-          <label>ADS sensitivity × <output id="o-ads"></output><input id="s-ads" type="range" min="0.3" max="1.5" step="0.05" /></label>
+          <label>Aim sensitivity × (red dot, iron sights) <output id="o-ads"></output><input id="s-ads" type="range" min="0.2" max="2" step="0.05" /></label>
+          <label>Scope sensitivity × (sniper) <output id="o-scope"></output><input id="s-scope" type="range" min="0.2" max="2" step="0.05" /></label>
+          <label class="row">Camera
+            <select id="s-view"><option value="third">Third person (over the shoulder)</option><option value="first">First person</option></select>
+          </label>
           <label>Field of view <output id="o-fov"></output><input id="s-fov" type="range" min="70" max="120" step="1" /></label>
           <label>Volume <output id="o-vol"></output><input id="s-vol" type="range" min="0" max="1" step="0.05" /></label>
           <label class="row">Graphics
@@ -67,10 +72,22 @@
             <tr><td>M</td><td>Map</td></tr>
             <tr><td>Space</td><td>In the plane: jump · falling: open parachute</td></tr>
             <tr><td>Y</td><td>Inspect weapon</td></tr>
+            <tr><td>V</td><td>Third / first person</td></tr>
             <tr><td>T</td><td>Refill ammo (range and free roam)</td></tr>
             <tr><td>Esc</td><td>Pause</td></tr>
           </table>
         </div>
+      </div>
+    </div>
+    <div id="loader" class="hidden">
+      <div class="load-bg"></div>
+      <div class="load-inner">
+        <h1>WAR<span>STRIKE</span></h1>
+        <p id="load-map"></p>
+        <div class="load-track"><div id="load-bar"></div></div>
+        <div class="load-row"><span id="load-step">Starting…</span><span id="load-pct">0%</span></div>
+        <button id="deploy" class="primary">CLICK TO DEPLOY</button>
+        <p class="load-tip"><b>TIP</b> <span id="load-tip"></span></p>
       </div>
     </div>
     <div id="help"><h3>Controls</h3><div id="help-body"></div></div>

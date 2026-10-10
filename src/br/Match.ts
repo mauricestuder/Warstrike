@@ -250,7 +250,7 @@ export class Match {
 
     // Look-at interaction.
     if (this.shop) { hud.setPrompt(null); return; }
-    const f = this.loot.focus(cam.position, dir, p.pos);
+    const f = this.loot.focus(g.eyePos, dir, p.pos);
     hud.setPrompt(this.promptFor(f));
     if (f && input.wasPressed('KeyF') && !shopClosed) {
       if (f.type === 'item') this.take(f.item, false);

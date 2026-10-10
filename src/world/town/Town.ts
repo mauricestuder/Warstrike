@@ -69,25 +69,33 @@ export class Town implements World, Site {
     this.foliage.tallGrass = (x, z) => this.grassDensity(x, z) > 1;
     r.scene.add(this.b.root);
     this.lines = { white: this.lineMat('#e6e2d6', 1), yellow: this.lineMat('#d8a92a', 2) };
-    this.ground(r);
-    this.roads();
-    this.suburb();
-    this.gasStation();
-    this.eastSide();
-    this.port();
-    downtown(this);
-    farmland(this);
-    railYard(this);
-    this.edges();
-    this.nature();
-    this.bots();
-    this.b.finish();
-    const grassRoot = new Group();
-    r.scene.add(grassRoot);
-    const hi = r.quality !== 'low';
-    this.rasterize();
-    this.grassCells = grass(grassRoot, this.m, X0 - 6, Z0 + 1, X1 + 6, Z1 + 8, hi ? 0.85 : 1.2, (x, z) => this.grassDensity(x, z), this.rnd);
-    this.grassFar = hi ? 95 : 70;
+    this.r = r;
+  }
+
+  private r: Renderer;
+
+  /** The build, split into labelled steps so a loading screen can show progress (the game runs them in order). */
+  steps(): [string, () => void][] {
+    const r = this.r;
+    return [
+      ['Shaping the ground', () => { this.ground(r); this.roads(); }],
+      ['Building the suburb', () => { this.suburb(); this.gasStation(); }],
+      ['Building the east side', () => this.eastSide()],
+      ['Building the port', () => this.port()],
+      ['Building downtown', () => downtown(this)],
+      ['Planting the farm', () => farmland(this)],
+      ['Laying the rail yard', () => railYard(this)],
+      ['Growing the woods', () => { this.edges(); this.nature(); this.bots(); }],
+      ['Merging geometry', () => this.b.finish()],
+      ['Growing grass', () => {
+        const grassRoot = new Group();
+        r.scene.add(grassRoot);
+        const hi = r.quality !== 'low';
+        this.rasterize();
+        this.grassCells = grass(grassRoot, this.m, X0 - 6, Z0 + 1, X1 + 6, Z1 + 8, hi ? 0.85 : 1.2, (x, z) => this.grassDensity(x, z), this.rnd);
+        this.grassFar = hi ? 95 : 70;
+      }],
+    ];
   }
 
   private grassFar = 90;

@@ -82,6 +82,9 @@ function labelTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2D
  * Spots are found automatically from the colliders: any floor with standing room is a candidate, and floors with a
  * roof over them (inside houses, the store, the warehouse, containers) are favoured, so the good stuff is indoors.
  */
+/** How far each loot gun model is slid along its length so it spins about its middle. */
+export const GUN_SHIFT: Record<GunId, number> = { sniper: 0.42, ar: 0.25, shotgun: 0.25, smg: 0.1 };
+
 export class Loot {
   readonly items: LootItem[] = [];
   readonly boxes: SupplyBox[] = [];
@@ -231,7 +234,7 @@ export class Loot {
       if (rarity > 0 && rarity < 4) accent.color.multiplyScalar(0.75);
       const g = buildGunMesh(id, accent);
       // Centre it on its length so it spins about its middle.
-      g.position.z = id === 'sniper' ? 0.42 : id === 'ar' || id === 'shotgun' ? 0.25 : 0.1;
+      g.position.z = GUN_SHIFT[id];
       const wrap = new Group();
       wrap.add(g);
       parts = this.bake(wrap);

@@ -1,23 +1,27 @@
-import { Vector3 } from 'three';
+import { Group, Mesh, MeshStandardMaterial, Vector3, type Material } from 'three';
 import { Sfx } from './audio/Sfx';
 import { Match } from './br/Match';
 import { Input } from './core/Input';
-import { clamp, damp, DEG } from './core/math';
-import type { Settings } from './core/Settings';
+import { clamp, damp, DEG, smoothstep } from './core/math';
+import { saveSettings, type Settings } from './core/Settings';
 import { Player } from './player/Player';
 import { Effects } from './render/Effects';
 import { Renderer } from './render/Renderer';
+import { Soldier } from './render/Soldier';
 import { Bot, Targets, type Target, type Zone } from './targets/Targets';
 import { Hud } from './ui/Hud';
 import { Ballistics } from './weapons/Ballistics';
-import { falloffMul, HANDS, MELEE_RANGE, type GunDef } from './weapons/defs';
-import { ViewModel } from './weapons/ViewModel';
+import { falloffMul, HANDS, MELEE_RANGE, RARITY, type GunDef, type GunId } from './weapons/defs';
+import { buildGunMesh, TAN, ViewModel } from './weapons/ViewModel';
 import { Weapons } from './weapons/Weapons';
 import { Range } from './world/Range';
 import { Town } from './world/town/Town';
 import type { World } from './world/World';
 
 export type MapId = 'range' | 'town' | 'br';
+
+/** Below this much third person, the camera counts as first person: the view model shows and your head and arms hide. */
+const FP_SWITCH = 0.7;
 
 /** What one hit did, for the marker, sound and readout. */
 interface HitFeedback {
@@ -31,16 +35,20 @@ export class Game {
   readonly input: Input;
   readonly sfx = new Sfx();
   readonly hud = new Hud();
-  readonly world: World;
-  readonly player: Player;
-  readonly targets: Targets;
-  readonly fx: Effects;
-  readonly ballistics: Ballistics;
-  readonly vm: ViewModel;
-  readonly weapons: Weapons;
+  world!: World;
+  player!: Player;
+  targets!: Targets;
+  fx!: Effects;
+  ballistics!: Ballistics;
+  vm!: ViewModel;
+  weapons!: Weapons;
+  /** Your own character: seen from behind in third person, your legs and chest when you look down in first person. */
+  body!: Soldier;
   running = false;
   /** The battle royale match (null on the range and in free roam). */
-  readonly match: Match | null = null;
+  match: Match | null = null;
+  /** Map built and ready to play. */
+  ready = false;
   /** Match finished: the end screen is up. */
   over = false;
   private last = performance.now();
@@ -49,6 +57,16 @@ export class Game {
   private landDip = 0;
   private landV = 0;
   private bob = 0;
+  private bobAmp = 0;
+  /** 0..1 how third-person the camera is (eases when you toggle the view or aim down sights). */
+  private tpK = 1;
+  private tp = 1;
+  private camDist = 2.4;
+  private shotsSeen = 0;
+  private bodyGun = '';
+  private gunMats = new Map<string, Group>();
+  /** Your head: where shots start in third person, and where reach (pick-ups, punches) is measured from. */
+  readonly eyePos = new Vector3();
   /** Latest damage events (exposed for automated tests). */
   readonly log: { zone: Zone; dmg: number; dist: number; wallbang: boolean; steel: boolean }[] = [];
 
@@ -56,9 +74,28 @@ export class Game {
     this.sfx.env = map === 'range' ? 'range' : 'town';
     this.renderer = new Renderer(settings.quality);
     this.input = new Input(this.renderer.gl.domElement);
-    const w = this.world = map === 'range' ? new Range(this.renderer) : new Town(this.renderer);
-    this.fx = new Effects(this.renderer.scene);
-    this.targets = new Targets(this.renderer, w.steel, w.botLanes, w.wallDummies);
+    this.tpK = this.tp = settings.view === 'third' ? 1 : 0;
+  }
+
+  /**
+   * Builds the map and everything in it, a step at a time so the loading screen can show progress between steps.
+   * `progress(fraction, label)` is called before each step and awaited (it yields a frame to the browser).
+   */
+  async load(progress: (f: number, label: string) => Promise<void>) {
+    const map = this.map, r = this.renderer;
+    await progress(0.04, map === 'range' ? 'Building the range' : 'Laying out Calvert');
+    const town = map === 'range' ? null : new Town(r);
+    const w = this.world = town ?? new Range(r);
+    if (town) {
+      const steps = town.steps();
+      for (let i = 0; i < steps.length; i++) {
+        await progress(0.06 + (0.6 * i) / steps.length, steps[i][0]);
+        steps[i][1]();
+      }
+    }
+    await progress(0.68, 'Training the bots');
+    this.fx = new Effects(r.scene);
+    this.targets = new Targets(r, w.steel, w.botLanes, w.wallDummies);
     this.player = new Player(w.colliders, {
       step: (s) => this.sfx.step(s),
       jump: () => this.sfx.jump(),
@@ -68,23 +105,36 @@ export class Game {
       chute: () => this.sfx.chute(),
     });
     this.player.spawn(w.spawn, w.spawnYaw);
+    this.body = new Soldier((color, rough = 0.85, metal = 0) => r.setupMaterial(new MeshStandardMaterial({ color, roughness: rough, metalness: metal })),
+      { fabric: 0x4b5258, vest: 0x2a2d30, helmet: 0x30353a });
+    r.scene.add(this.body.root);
     this.ballistics = new Ballistics(w.colliders, this.targets, {
       impact: (p, n, s, exit) => { this.fx.impact(p, n, s); void exit; },
       hit: (t, zone, gun, mul, dist, p, dir, wb) => this.onHit(t, zone, gun, mul, dist, p, dir, wb),
       tracer: (a, b, bullet) => this.fx.tracer(a, b, bullet ? 0.016 : 0.01, bullet ? 0.035 : 0.04),
       volley: (on) => this.volley(on),
     });
-    this.vm = new ViewModel(this.renderer.vmScene);
+    this.vm = new ViewModel(r.vmScene);
     this.weapons = new Weapons(this.player, this.vm, this.ballistics, this.sfx, this.hud, this.fx);
     this.weapons.infiniteReserve = w.infiniteAmmo;
     this.weapons.refill();
     this.weapons.melee = this.melee;
+    this.weapons.aimFrom = (dir) => this.aimFrom(dir);
+    this.weapons.muzzleAt = (out) => this.body.muzzle(out);
     this.hud.setMode(false);
     if (map === 'br') {
+      await progress(0.74, 'Mapping routes for 37 bots');
       this.match = new Match(this);
       this.weapons.onShot = () => this.match?.playerShot();
     }
     this.applySettings();
+    await progress(0.9, 'Warming up shaders');
+    // Compile every material now, so the first look around doesn't stutter.
+    this.camera3p(0);
+    this.syncBody(0);
+    try { await r.gl.compileAsync(r.scene, r.camera); await r.gl.compileAsync(r.vmScene, r.vmCamera); } catch { /* not supported: compile lazily */ }
+    await progress(1, 'Ready');
+    this.ready = true;
     requestAnimationFrame(() => this.frame());
   }
 
@@ -95,13 +145,30 @@ export class Game {
 
   get welcome() {
     return this.match
-      ? 'Battle royale · SPACE to jump from the plane · loot guns with F · plate up with 4 · M for the map · 12 bots drop with you and shoot back · last one standing wins'
-      : this.world.welcome;
+      ? `Battle royale · SPACE to jump from the plane · loot guns with F · plate up with 4 · M for the map · V switches first / third person · ${this.targets.bots.length} bots drop with you and shoot back · last one standing wins`
+      : `${this.world.welcome} · V switches first / third person`;
+  }
+
+  /** Third person: start the shot at your head and aim it at whatever is under the crosshair. */
+  private aimFrom(dir: Vector3): Vector3 | null {
+    if (this.tp < FP_SWITCH) return null;
+    const cam = this.renderer.camera.position;
+    // Look for what the crosshair is on, starting level with you (not at the camera behind you).
+    const start = cam.clone().addScaledVector(dir, this.camDist * this.tp);
+    let t = 900;
+    const wall = this.world.colliders.raycast(start, dir, t);
+    if (wall) t = wall.t;
+    const hit = this.targets.raycast(start, dir, t);
+    if (hit) t = hit.hit.t;
+    const aim = start.addScaledVector(dir, Math.max(t, 1.5));
+    const origin = this.eyePos.clone();
+    dir.subVectors(aim, origin).normalize();
+    return origin;
   }
 
   /** A punch: the nearest bot within reach in front of you, unless a wall is closer. */
   readonly melee = (dir: Vector3) => {
-    const eye = this.renderer.camera.position;
+    const eye = this.eyePos;
     const hit = this.targets.raycast(eye, dir, MELEE_RANGE);
     if (!hit) return false;
     const wall = this.world.colliders.raycast(eye, dir, hit.hit.t);
@@ -177,12 +244,80 @@ export class Game {
     return 2 * Math.atan(Math.tan((this.settings.fov * DEG) / 2) / (16 / 9)) / DEG;
   }
 
+  /** Pulls the camera back over your right shoulder (by `tp`), stopping short of walls. */
+  private camera3p(dt: number) {
+    const p = this.player, cam = this.renderer.camera;
+    if (this.tp <= 0.001) return;
+    const sky = p.skydive !== 'none';
+    const cy = Math.cos(p.yaw), sy = Math.sin(p.yaw), cp = Math.cos(p.pitch), sp = Math.sin(p.pitch);
+    const dist = sky ? 5.5 : p.stance === 'slide' ? 2.2 : 2.5, side = sky ? 0 : 0.55, up = sky ? 0.6 : 0.22;
+    // Back along the look direction, out to the right, a little up.
+    const off = new Vector3(sy * cp * dist + cy * side, -sp * dist + up, cy * cp * dist - sy * side);
+    const len = off.length();
+    off.divideScalar(len);
+    const hit = this.world.colliders.raycast(this.eyePos, off, len + 0.3);
+    const allowed = hit ? Math.max(0.25, hit.t - 0.3) : len;
+    // Snap in when a wall gets close, ease back out afterwards.
+    this.camDist = allowed < this.camDist || dt === 0 ? allowed : damp(this.camDist, allowed, 5, dt);
+    cam.position.addScaledVector(off, this.camDist * this.tp);
+  }
+
+  /** Poses your character and keeps the gun in its hands in step with the weapon you hold. */
+  private syncBody(dt: number) {
+    const p = this.player, w = this.weapons, b = this.body, m = this.match;
+    const plane = !!m && m.inPlane;
+    b.root.visible = !plane;
+    if (plane) return;
+    const g = w.current, key = g.base === 'hands' ? 'hands' : `${g.base}:${g.rarity}`;
+    if (key !== this.bodyGun) {
+      this.bodyGun = key;
+      b.setGun(g.base === 'hands' ? null : this.worldGun(g.base, g.rarity), g.base === 'hands' ? 'hands' : g.base);
+    }
+    // In first person the body stands a little behind the camera, so looking down shows your legs rather than the inside of your head.
+    const fp = 1 - this.tp, back = 0.14 * fp;
+    b.root.position.set(p.pos.x + Math.sin(p.yaw) * back, p.pos.y, p.pos.z + Math.cos(p.yaw) * back);
+    b.root.rotation.y = p.yaw + Math.PI;
+    b.firstPerson = this.tp < FP_SWITCH;
+    const kick = w.shots !== this.shotsSeen ? 1 : 0;
+    this.shotsSeen = w.shots;
+    b.update(dt, {
+      vx: p.vel.x, vz: p.vel.z, yaw: p.yaw + Math.PI, pitch: p.pitch, grounded: p.onGround && !p.mantling,
+      sprint: p.sprinting, crouch: p.stance === 'crouch', slide: p.stance === 'slide', ads: w.ads,
+      sky: p.skydive, reload: w.reloadProgress, kick,
+    });
+    b.canopy.visible = p.skydive === 'chute' && this.tp >= FP_SWITCH;
+  }
+
+  /** A world-lit copy of a gun model in its rarity colour (cached). */
+  private worldGun(id: GunId, rarity: number) {
+    const key = `${id}:${rarity}`;
+    let src = this.gunMats.get(key);
+    if (!src) {
+      const r = RARITY[rarity as 0];
+      const accent = new MeshStandardMaterial({ color: r.color === '#b9bec4' ? TAN : r.color, roughness: rarity === 4 ? 0.3 : 0.7, metalness: rarity === 4 ? 0.85 : 0 });
+      if (r.color !== '#b9bec4' && rarity < 4) accent.color.multiplyScalar(0.75);
+      src = buildGunMesh(id, accent);
+      // The view model's materials aren't set up for the world's cascaded shadows: give this copy its own.
+      const copies = new Map<Material, Material>();
+      src.traverse((o) => {
+        const mesh = o as Mesh;
+        if (!mesh.isMesh) return;
+        const mat = mesh.material as Material;
+        let c = copies.get(mat);
+        if (!c) { c = this.renderer.setupMaterial(mat.clone()); copies.set(mat, c); }
+        mesh.material = c;
+      });
+      this.gunMats.set(key, src);
+    }
+    return src.clone();
+  }
+
   private frame() {
     requestAnimationFrame(() => this.frame());
     const now = performance.now();
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
-    if (this.running) this.step(dt);
+    if (this.running && this.ready) this.step(dt);
     this.renderer.render();
     this.input.endFrame();
   }
@@ -193,14 +328,25 @@ export class Game {
     // Mouse look (degrees per count like CS, scaled down while zoomed so tracking feels the same).
     const vBase = this.baseVFov();
     const zoomRatio = Math.tan((this.fov * DEG) / 2) / Math.tan((vBase * DEG) / 2);
-    const adsScale = 1 + (zoomRatio * this.settings.adsSens - 1) * w.ads;
+    // Separate multipliers for the sniper scope and for red dots / iron sights.
+    const adsMul = w.def.scope ? this.settings.scopeSens : this.settings.adsSens;
+    const adsScale = 1 + (zoomRatio * adsMul - 1) * w.ads;
     const k = 0.022 * this.settings.sens * DEG * adsScale;
     p.look(input.mouseDX * k, input.mouseDY * k);
 
     const m = this.match, plane = !!m && m.inPlane, sky = p.skydive !== 'none';
     if (!plane) p.update(dt, input);
     w.blocked = !!m && m.blocksWeapons;
-    w.hidden = plane || sky;
+    if (input.wasPressed('KeyV')) {
+      this.settings.view = this.settings.view === 'third' ? 'first' : 'third';
+      saveSettings(this.settings);
+      this.hud.info(this.settings.view === 'third' ? 'THIRD PERSON' : 'FIRST PERSON');
+    }
+    this.tpK = damp(this.tpK, this.settings.view === 'third' ? 1 : 0, 7, dt);
+    // Aiming down sights always looks through the sights in first person.
+    // The camera moves in to the eye over the first part of the aim so the sight is up by the time it gets there.
+    this.tp = plane ? 0 : this.tpK * (1 - smoothstep(0, 0.6, w.ads));
+    w.hidden = plane || (sky && this.tp < FP_SWITCH) || this.tp >= FP_SWITCH;
     w.chute = p.skydive === 'chute';
     w.pitch = p.pitch;
     w.update(dt, input, cam);
@@ -216,16 +362,23 @@ export class Game {
     if (input.wasPressed('KeyT') && !m) { w.refill(); this.hud.showHint('Ammo refilled', 1.5); }
 
     // --- Camera feel ---
-    // Landing dip on a spring, gentle head bob, slide roll and a little strafe lean.
+    // Landing dip on a spring, gentle head bob, slide roll and a little strafe lean. Everything eases in and out.
     this.landV += (-80 * this.landDip - 11 * this.landV) * dt;
     this.landDip += this.landV * dt;
     if (p.onGround && p.moving && p.stance !== 'slide') this.bob += dt * p.horizSpeed * 1.9;
-    const bobAmp = (p.onGround ? clamp(p.horizSpeed / 6, 0, 1.2) : 0) * (1 - w.ads * 0.9) * 0.022;
+    this.bobAmp = damp(this.bobAmp, p.onGround && p.stance !== 'slide' ? clamp(p.horizSpeed / 6, 0, 1.2) : 0, 6, dt);
+    const fp = 1 - this.tp, bobAmp = this.bobAmp * (1 - w.ads * 0.9) * 0.022 * fp;
     const sideVel = p.vel.x * Math.cos(p.yaw) - p.vel.z * Math.sin(p.yaw);
-    this.roll = damp(this.roll, -p.slideT * 0.07 - clamp(sideVel / 7, -1, 1) * 0.012 * (1 - w.ads), 8, dt);
+    this.roll = damp(this.roll, (-p.slideT * 0.07 - clamp(sideVel / 7, -1, 1) * 0.012 * (1 - w.ads)) * fp, 8, dt);
+    this.eyePos.set(p.pos.x, p.pos.y + p.eye + this.landDip * fp, p.pos.z);
     if (plane) m!.planeCamera(cam.position);
-    else cam.position.set(p.pos.x, p.pos.y + p.eye + this.landDip + Math.abs(Math.sin(this.bob)) * bobAmp, p.pos.z);
+    else {
+      cam.position.copy(this.eyePos);
+      cam.position.y += Math.abs(Math.sin(this.bob)) * bobAmp;
+      this.camera3p(dt);
+    }
     cam.rotation.set(p.pitch + w.punch + w.breathPitch, p.yaw + w.breathYaw + Math.sin(this.bob * 0.5) * bobAmp * 0.15, this.roll, 'YXZ');
+    this.syncBody(dt);
 
     // FOV: sprint widens a touch, ADS zooms by the gun's optic (lerped in tan-space so zoom feels linear).
     const sprintK = p.skydive === 'freefall' ? 1 + clamp(-p.vel.y / 58, 0, 1) * 0.22 : p.tacSprinting ? 1.1 : p.sprinting ? 1.05 : 1;
@@ -239,6 +392,8 @@ export class Game {
     // --- HUD ---
     const crossVis = w.scoped || p.sprinting || plane || sky ? 0 : (w.onHands ? 0.6 : 1) * (1 - w.ads) * (1 - w.lower);
     this.hud.crosshair(w.crosshairSpread, this.fov, crossVis, dt);
+    const g = w.current;
+    this.hud.magArc(w.onHands ? -1 : g.mag, g.def.mag, w.reloadProgress, plane || sky || w.scoped ? 0 : (1 - w.ads * 0.55) * (1 - w.lower) * (p.sprinting ? 0.35 : 1), dt);
     this.hud.setScope(w.scoped);
     this.hud.setMove(p.horizSpeed, p.mantling ? 'mantle' : p.tacSprinting ? 'tac sprint' : p.sprinting ? 'sprint' : p.stance, p.lastSlide);
     this.hud.setTac(p.tacFraction, p.tacSprinting);

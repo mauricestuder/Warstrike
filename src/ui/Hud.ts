@@ -29,6 +29,12 @@ export class Hud {
   private aliveEl = $('alive');
   private hurtEl = $('hurt');
   private gasEl = $('gas');
+  private arcEl = $('magarc') as unknown as SVGSVGElement;
+  private arcSegs: SVGPathElement[] = [];
+  private arcReload = this.arcEl.querySelector('.reload') as SVGPathElement;
+  private arcSize = -1;
+  private arcMag = -1;
+  private arcVis = 0;
   private prompt = '';
   private lastVitals = '';
   private gap = 20;
@@ -46,6 +52,43 @@ export class Hud {
     this.gap = damp(this.gap, Math.max(4, px), 22, dt);
     this.cross.style.setProperty('--gap', `${this.gap.toFixed(1)}px`);
     this.cross.style.opacity = visible.toFixed(2);
+  }
+
+  /**
+   * The curved magazine bar under the crosshair: one segment per round, emptying from the right as you fire,
+   * red when the mag is nearly empty, and a thin outer arc that fills while reloading. `mag` < 0 hides it (fists).
+   */
+  magArc(mag: number, size: number, reload: number, visible: number, dt: number) {
+    if (mag < 0) visible = 0;
+    this.arcVis = damp(this.arcVis, visible, 14, dt);
+    this.arcEl.style.opacity = this.arcVis.toFixed(2);
+    if (this.arcVis < 0.01) return;
+    const R = 46, A0 = 138, A1 = 42;
+    const pt = (deg: number, r = R) => `${(Math.cos((deg * Math.PI) / 180) * r).toFixed(2)} ${(Math.sin((deg * Math.PI) / 180) * r).toFixed(2)}`;
+    if (size !== this.arcSize) {
+      this.arcSize = size;
+      this.arcMag = -1;
+      for (const sg of this.arcSegs) sg.remove();
+      this.arcSegs = [];
+      const step = (A0 - A1) / size, gap = Math.min(step * 0.35, 1.6);
+      for (let i = 0; i < size; i++) {
+        const a = A0 - i * step, b = a - step + gap;
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        el.setAttribute('d', `M ${pt(a)} A ${R} ${R} 0 0 0 ${pt(b)}`);
+        el.setAttribute('class', 'seg');
+        this.arcEl.appendChild(el);
+        this.arcSegs.push(el);
+      }
+      this.arcReload.setAttribute('d', `M ${pt(A0, R + 6)} A ${R + 6} ${R + 6} 0 0 0 ${pt(A1, R + 6)}`);
+    }
+    if (mag !== this.arcMag) {
+      this.arcMag = mag;
+      const low = mag <= Math.max(1, Math.floor(size * 0.25));
+      this.arcEl.classList.toggle('low', low);
+      this.arcSegs.forEach((sg, i) => sg.classList.toggle('on', i < mag));
+    }
+    this.arcEl.classList.toggle('reloading', reload >= 0);
+    this.arcReload.style.strokeDashoffset = reload >= 0 ? (1 - reload).toFixed(3) : '1';
   }
 
   hit(kind: 'body' | 'head' | 'kill' | 'steel' | 'armor') {

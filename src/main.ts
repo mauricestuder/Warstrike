@@ -16,24 +16,59 @@ function resume() {
   game.input.lock();
 }
 
-/** Builds the chosen map (the town takes a moment to generate), then drops you in. */
-function start(map: MapId) {
+const TIPS = [
+  'Double-tap Shift for a tactical sprint — the fastest way across open ground.',
+  'Sprint, then crouch to slide. Jump out of a slide to keep its speed.',
+  'Jump into a ledge and hold Space to mantle up to two metres.',
+  'V switches between third and first person. Aiming always looks down the sights.',
+  'Bullets drop and slow down: hold over far targets with the sniper.',
+  'Thin walls and wood don\'t stop bullets. Concrete a metre thick does.',
+  'Corn and bushes hide you from the bots — until you fire from inside them.',
+  'Hold Shift while scoped to steady your breath for a few seconds.',
+  'The bar under your crosshair is your magazine. It turns red when you\'re nearly empty.',
+  'Plate up with 4 before you push: three plates soak 150 damage.',
+];
+
+const loader = byId('loader'), loadBar = byId('load-bar'), loadStep = byId('load-step'), loadPct = byId('load-pct');
+const deploy = byId<HTMLButtonElement>('deploy');
+/** Lets the browser paint the loading screen between build steps. */
+const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+
+/** Shows the loading screen while the map builds a step at a time, then waits for you to deploy. */
+async function start(map: MapId) {
   for (const b of maps.querySelectorAll('button')) b.disabled = true;
-  sub.textContent = `Building ${MAP_NAMES[map]}…`;
-  // Let the "Building…" text paint before the heavy work; pointer lock still counts as part of this click.
-  setTimeout(() => {
-    game = new Game(settings, map);
-    (window as unknown as { game: Game }).game = game;
-    maps.classList.add('hidden');
-    play.classList.remove('hidden');
-    leave.classList.remove('hidden');
-    play.textContent = 'PLAY';
-    sub.textContent = `${MAP_NAMES[map]} · build 0.7`;
-    game.renderer.gl.domElement.addEventListener('click', () => { if (game && !game.input.locked) resume(); });
-    // Grabbing the mouse needs a click; after "play again" the page loads without one, so wait for PLAY.
-    if (navigator.userActivation?.isActive ?? true) resume();
-  }, 30);
+  menu.classList.add('hidden');
+  byId('load-map').textContent = map === 'range' ? 'GUN RANGE' : map === 'br' ? 'BATTLE ROYALE · CALVERT' : 'CALVERT · FREE ROAM';
+  byId('load-tip').textContent = TIPS[Math.floor(Math.random() * TIPS.length)];
+  loader.classList.remove('hidden', 'done');
+  let tipT = setInterval(() => { byId('load-tip').textContent = TIPS[Math.floor(Math.random() * TIPS.length)]; }, 4500);
+  await nextFrame();
+  const g = game = new Game(settings, map);
+  (window as unknown as { game: Game }).game = g;
+  await g.load(async (f, label) => {
+    loadBar.style.transform = `scaleX(${f.toFixed(3)})`;
+    loadStep.textContent = `${label}…`;
+    loadPct.textContent = `${Math.round(f * 100)}%`;
+    await nextFrame();
+  });
+  clearInterval(tipT);
+  tipT = 0 as unknown as ReturnType<typeof setInterval>;
+  loadStep.textContent = 'Ready';
+  loader.classList.add('done');
+  maps.classList.add('hidden');
+  play.classList.remove('hidden');
+  leave.classList.remove('hidden');
+  play.textContent = 'PLAY';
+  sub.textContent = `${MAP_NAMES[map]} · build 0.8`;
+  g.renderer.gl.domElement.addEventListener('click', () => { if (game && !game.input.locked) resume(); });
+  deploy.focus();
 }
+
+deploy.addEventListener('click', () => {
+  loader.classList.add('hidden');
+  menu.classList.remove('hidden');
+  resume();
+});
 
 for (const b of maps.querySelectorAll<HTMLButtonElement>('button.map')) b.addEventListener('click', () => start(b.dataset.map as MapId));
 play.addEventListener('click', resume);
@@ -46,11 +81,12 @@ if (sessionStorage.getItem('warstrike.autostart') === 'br') {
 }
 
 document.addEventListener('pointerlockchange', () => {
-  if (!game) return;
+  if (!game?.ready) return;
   const locked = document.pointerLockElement === game.renderer.gl.domElement;
   game.running = locked && !game.over;
   if (game.over) { menu.classList.add('hidden'); byId('end').classList.remove('hidden'); return; }
   menu.classList.toggle('hidden', locked);
+  if (!locked) view.value = settings.view;
   if (locked) {
     play.textContent = 'RESUME';
     const key = `warstrike.welcomed.${game.map}`;
@@ -65,6 +101,7 @@ document.addEventListener('pointerlockchange', () => {
 const sliders: [string, keyof typeof settings, (v: number) => string][] = [
   ['sens', 'sens', (v) => v.toFixed(2)],
   ['ads', 'adsSens', (v) => v.toFixed(2)],
+  ['scope', 'scopeSens', (v) => v.toFixed(2)],
   ['fov', 'fov', (v) => `${v}°`],
   ['vol', 'volume', (v) => `${Math.round(v * 100)}%`],
 ];
@@ -88,6 +125,9 @@ quality.addEventListener('change', () => {
   byId('quality-note').textContent = 'Reloading to apply graphics…';
   setTimeout(() => location.reload(), 300);
 });
+const view = byId<HTMLSelectElement>('s-view');
+view.value = settings.view;
+view.addEventListener('change', () => { settings.view = view.value as 'third' | 'first'; saveSettings(settings); });
 const fps = byId<HTMLInputElement>('s-fps');
 fps.checked = settings.showFps;
 fps.addEventListener('change', () => { settings.showFps = fps.checked; saveSettings(settings); game?.applySettings(); });

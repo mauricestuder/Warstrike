@@ -16,6 +16,20 @@ Or build a single self-contained file you can double-click or send to a friend:
 npm run share      # → Warstrike.html (no server needed)
 ```
 
+## What's new in build 0.8
+
+- **Third person.** The camera now sits over your right shoulder and you see your whole soldier. Press **V** to switch to first person and back (it's also in the settings). Aiming down sights always goes to the sights in first person. In third person your shots leave from your character toward whatever is under the crosshair, and the camera stops short of walls.
+- **Your own body.** In first person, look down to see your legs and boots.
+- **Animated soldiers.** You and the bots share one rig with jointed arms and legs:
+  - walk and run cycles that follow the direction you actually move (strafing and backpedalling included);
+  - crouch, slide, jump, freefall and parachute poses;
+  - hands that stay on the gun as it aims up and down.
+- **Smoother movement feel.** Sprinting, tactical sprint (the gun tips up), crouching, jumping, head bob and the camera all blend over a few tenths of a second instead of snapping.
+- **Separate aim sensitivities.** One multiplier for red dots and iron sights, and one for the sniper scope.
+- **Red dot fix.** Aiming while sliding no longer pushes the sight off the crosshair.
+- **Magazine bar.** A curved bar under the crosshair shows the rounds left in the mag. It turns red when you're nearly empty and shows reload progress.
+- **Loading screen.** A progress bar shows each build step, with tips while you wait.
+
 ## What's new in build 0.7
 
 **A new, much bigger map: Calvert.** It's about 480 × 480 m, over four times the old map. Harbor Outskirts is now its northern middle.
