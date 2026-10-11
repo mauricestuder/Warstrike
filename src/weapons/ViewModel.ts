@@ -526,7 +526,7 @@ export class ViewModel {
       let back = 0;
       if (this.pumpT >= 0) {
         this.pumpT += dt;
-        const t = (this.pumpT - 0.1) / 0.36;
+        const t = (this.pumpT - 0.07) / 0.3;
         if (t > 0) back = Math.sin(Math.min(1, t) * Math.PI);
         if (t >= 1) this.pumpT = -1;
         rx -= back * 0.06;

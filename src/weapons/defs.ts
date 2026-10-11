@@ -98,7 +98,7 @@ export const GUNS: Record<GunId, GunDef> = {
   },
   shotgun: {
     id: 'shotgun', name: 'BRUISER 12', ammo: 'shells', sprintMult: 1, damage: 19, headMult: 1.5, limbMult: 0.85, falloff: [7, 24], minDamageMul: 0.2,
-    rpm: 72, auto: false, mag: 6, reserve: 36, reload: 2.4, reloadEmpty: 3.0,
+    rpm: 110, auto: false, mag: 6, reserve: 36, reload: 2.4, reloadEmpty: 3.0,
     hipSpread: 0.6 * DEG, adsSpread: 0.3 * DEG, moveSpread: 0.6 * DEG, bloomPerShot: 0, bloomMax: 0,
     adsTime: 0.22, sprintToFire: 0.14, moveMult: 1, bulletVel: 0, penetration: 0.08,
     pattern: [[4.2, 0.5]], recoilJitter: 0.9, firstShotKick: 1, adsRecoilMul: 0.85,
