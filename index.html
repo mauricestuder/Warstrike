@@ -32,7 +32,7 @@
     <div id="menu">
       <div class="panel">
         <h1>WAR<span>STRIKE</span></h1>
-        <p class="sub" id="sub">Build 0.8 · choose a mode</p>
+        <p class="sub" id="sub">Build 0.9 · choose a mode</p>
         <div id="maps">
           <button class="map br" data-map="br"><b>BATTLE ROYALE</b><span>Drop from the plane into Calvert · port, downtown, farm, rail yard and school · loot guns, plates and cash · outlast the gas and 37 bots</span></button>
           <button class="map" data-map="range"><b>GUN RANGE</b><span>Steel out to 300 m, strafing bots, wallbang lane, movement course · infinite ammo</span></button>
@@ -53,6 +53,10 @@
           <label class="row">Graphics
             <select id="s-quality"><option value="ultra">Ultra (ambient occlusion, 1024 px textures, longer shadows)</option><option value="high">High (shadow cascades, MSAA, 512 px textures)</option><option value="low">Low (faster)</option></select>
           </label>
+          <label>Arrow-key turn speed × <output id="o-keys"></output><input id="s-keys" type="range" min="0.3" max="3" step="0.05" /></label>
+          <label>Touch look speed × <output id="o-touch"></output><input id="s-touch" type="range" min="0.3" max="3" step="0.05" /></label>
+          <label class="row check"><input id="s-kbonly" type="checkbox" /> Keyboard only (don't capture the mouse; arrow keys aim)</label>
+          <label class="row check"><input id="s-assist" type="checkbox" /> Aim assist for arrow keys and touch (never the mouse)</label>
           <label class="row check"><input id="s-fps" type="checkbox" /> Show FPS</label>
           <p class="note" id="quality-note"></p>
         </div>
@@ -75,6 +79,15 @@
             <tr><td>V</td><td>Third / first person</td></tr>
             <tr><td>T</td><td>Refill ammo (range and free roam)</td></tr>
             <tr><td>Esc</td><td>Pause</td></tr>
+            <tr><th colspan="2">Keyboard only</th></tr>
+            <tr><td>Arrow keys / Numpad 8 4 6 2</td><td>Aim (light aim assist near enemies)</td></tr>
+            <tr><td>Enter / Right Ctrl / Numpad 0</td><td>Fire</td></tr>
+            <tr><td>Right Shift / - (key right of .) / Numpad .</td><td>Aim down sights</td></tr>
+            <tr><td>Q / E</td><td>Previous / next weapon</td></tr>
+            <tr><th colspan="2">Touch screen</th></tr>
+            <tr><td>Left thumb</td><td>Move · push all the way forward to sprint</td></tr>
+            <tr><td>Drag right side</td><td>Look · FIRE and AIM also turn while you hold them</td></tr>
+            <tr><td>Buttons</td><td>Jump, crouch (hold; slide while sprinting), reload, swap, use, plate, map, view</td></tr>
           </table>
         </div>
       </div>

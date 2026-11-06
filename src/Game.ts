@@ -10,6 +10,7 @@ import { Renderer } from './render/Renderer';
 import { Soldier } from './render/Soldier';
 import { Bot, Targets, type Target, type Zone } from './targets/Targets';
 import { Hud } from './ui/Hud';
+import { Touch } from './ui/Touch';
 import { Ballistics } from './weapons/Ballistics';
 import { falloffMul, HANDS, MELEE_RANGE, RARITY, type GunDef, type GunId } from './weapons/defs';
 import { buildGunMesh, TAN, ViewModel } from './weapons/ViewModel';
@@ -29,12 +30,18 @@ interface HitFeedback {
   dist: number; p: Vector3; dir: Vector3; wallbang: boolean;
 }
 
+const aimPt = new Vector3(), aimDir = new Vector3();
+const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+
 /** Wires everything together and runs the frame: input → movement → weapons → bullets → camera → render. */
 export class Game {
   readonly renderer: Renderer;
   readonly input: Input;
   readonly sfx = new Sfx();
   readonly hud = new Hud();
+  readonly touch: Touch;
+  /** Called once when a battle royale match ends (the end screen is about to show). */
+  onOver: () => void = () => {};
   world!: World;
   player!: Player;
   targets!: Targets;
@@ -65,6 +72,12 @@ export class Game {
   private shotsSeen = 0;
   private bodyGun = '';
   private gunMats = new Map<string, Group>();
+  /** How long the arrow keys have been held (turning ramps up so small taps stay precise). */
+  private keyHeldT = 0;
+  /** Seconds since the arrow keys or a finger last turned the view. */
+  private padAimT = 99;
+  /** 0..1 how strongly aim assist is acting right now (eases in and out). */
+  private assistK = 0;
   /** Your head: where shots start in third person, and where reach (pick-ups, punches) is measured from. */
   readonly eyePos = new Vector3();
   /** Latest damage events (exposed for automated tests). */
@@ -74,6 +87,7 @@ export class Game {
     this.sfx.env = map === 'range' ? 'range' : 'town';
     this.renderer = new Renderer(settings.quality);
     this.input = new Input(this.renderer.gl.domElement);
+    this.touch = new Touch(this.input);
     this.tpK = this.tp = settings.view === 'third' ? 1 : 0;
   }
 
@@ -319,7 +333,76 @@ export class Game {
     this.last = now;
     if (this.running && this.ready) this.step(dt);
     this.renderer.render();
-    this.input.endFrame();
+    this.input.endFrame(dt);
+    this.touch.update(dt);
+  }
+
+  /**
+   * Arrow-key and touch look, plus a light aim assist for them: near an enemy the turn slows a little and the
+   * view eases toward their chest. It never helps the mouse, and it only works on enemies you can actually see.
+   */
+  private padLook(dt: number, adsScale: number) {
+    const input = this.input, p = this.player, w = this.weapons, set = this.settings;
+    const [kx, ky] = input.keyLook();
+    const keys = kx !== 0 || ky !== 0;
+    this.keyHeldT = keys ? this.keyHeldT + dt : 0;
+    const touching = input.touchDX !== 0 || input.touchDY !== 0;
+    if (keys || touching) this.padAimT = 0;
+    else this.padAimT += dt;
+
+    const target = set.aimAssist && this.padAimT < 3 && input.sinceMouse > 1 ? this.assistTarget() : null;
+    this.assistK = damp(this.assistK, target ? 1 : 0, 6, dt);
+    // Slow the turn a little while the crosshair is near an enemy, so it's easier to stop on them.
+    const slow = 1 - 0.4 * this.assistK;
+
+    if (keys) {
+      const ramp = 0.3 + 0.7 * smoothstep(0, 0.4, this.keyHeldT);
+      const rate = 150 * DEG * set.keySens * adsScale * ramp * slow * dt;
+      p.look(kx * rate, ky * rate * 0.7);
+    }
+    if (touching) {
+      const tk = 0.0045 * set.touchSens * adsScale * slow;
+      p.look(input.touchDX * tk, input.touchDY * tk);
+    }
+    if (target) {
+      // Ease toward the target: gentle from the hip, a bit firmer while aiming down sights.
+      const pull = (1.6 + 2.6 * w.ads) * this.assistK * target.k;
+      const f = 1 - Math.exp(-pull * dt);
+      p.yaw += target.dYaw * f;
+      p.pitch = clamp(p.pitch + target.dPitch * f, -1.53, 1.53);
+    }
+  }
+
+  /** The visible enemy closest to the crosshair, if one is within the small assist cone. */
+  private assistTarget(): { dYaw: number; dPitch: number; k: number } | null {
+    const p = this.player, m = this.match;
+    if ((m && m.inPlane) || p.skydive !== 'none' || this.weapons.onHands) return null;
+    const cam = this.renderer.camera.position, eye = this.eyePos;
+    const maxD = this.weapons.def.scope ? 320 : 110;
+    let best: { dYaw: number; dPitch: number; k: number } | null = null, bestErr = Infinity;
+    for (const b of this.targets.bots) {
+      if (!b.alive || b.hidden) continue;
+      aimPt.copy(b.position).y += 1.3;
+      const dx = aimPt.x - cam.x, dy = aimPt.y - cam.y, dz = aimPt.z - cam.z;
+      const flat = Math.hypot(dx, dz), d = Math.hypot(flat, dy);
+      if (d < 1.5 || d > maxD) continue;
+      const dYaw = wrapAngle(Math.atan2(-dx, -dz) - p.yaw);
+      const dPitch = Math.atan2(dy, flat) - p.pitch;
+      const err = Math.hypot(dYaw * Math.cos(p.pitch), dPitch);
+      // About a body-width either side up close, a few degrees far away.
+      const cone = clamp(Math.atan(1.1 / d), 2.2 * DEG, 7 * DEG);
+      if (err > cone || err >= bestErr) continue;
+      // Only enemies in plain sight: a wall between you and them cancels it.
+      aimDir.subVectors(aimPt, eye);
+      const los = aimDir.length();
+      aimDir.divideScalar(los);
+      const wall = this.world.colliders.raycast(eye, aimDir, los);
+      if (wall && wall.t < los - 0.4) continue;
+      bestErr = err;
+      // Strongest a little off the target, fading out at the cone's edge (no snapping from far away).
+      best = { dYaw, dPitch, k: 1 - smoothstep(0.55, 1, err / cone) };
+    }
+    return best;
   }
 
   /** One simulation frame. Public so tests can drive the game with fixed time steps. */
@@ -333,6 +416,7 @@ export class Game {
     const adsScale = 1 + (zoomRatio * adsMul - 1) * w.ads;
     const k = 0.022 * this.settings.sens * DEG * adsScale;
     p.look(input.mouseDX * k, input.mouseDY * k);
+    this.padLook(dt, adsScale);
 
     const m = this.match, plane = !!m && m.inPlane, sky = p.skydive !== 'none';
     if (!plane) p.update(dt, input);

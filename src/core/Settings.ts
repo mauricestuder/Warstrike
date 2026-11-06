@@ -13,10 +13,19 @@ export interface Settings {
   quality: Quality;
   volume: number;
   showFps: boolean;
+  /** Arrow-key turn speed (× 150°/s). */
+  keySens: number;
+  /** Touch look speed (×). */
+  touchSens: number;
+  /** Gentle aim assist when you aim with the arrow keys or a touch screen (never with the mouse). */
+  aimAssist: boolean;
+  /** Play without capturing the mouse: arrow keys aim. */
+  keyboardOnly: boolean;
 }
 
 const KEY = 'warstrike.settings';
-const DEFAULTS: Settings = { sens: 2.2, adsSens: 1, scopeSens: 1, view: 'third', fov: 90, quality: 'high', volume: 0.7, showFps: true };
+const DEFAULTS: Settings = { sens: 2.2, adsSens: 1, scopeSens: 1, view: 'third', fov: 90, quality: 'high', volume: 0.7, showFps: true,
+  keySens: 1, touchSens: 1, aimAssist: true, keyboardOnly: false };
 
 export function loadSettings(): Settings {
   try {

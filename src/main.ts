@@ -1,6 +1,7 @@
 import './style.css';
 import { loadSettings, saveSettings, type Quality } from './core/Settings';
 import { Game, type MapId } from './Game';
+import { isTouchDevice } from './ui/Touch';
 
 const settings = loadSettings();
 let game: Game | null = null;
@@ -10,10 +11,43 @@ const menu = byId('menu'), play = byId<HTMLButtonElement>('play'), leave = byId<
 const maps = byId('maps'), sub = byId('sub');
 const MAP_NAMES: Record<MapId, string> = { range: 'Gun range', town: 'Calvert', br: 'Battle royale' };
 
+/** Phones and tablets get the on-screen controls; a laptop with a touch screen switches over on the first touch. */
+let touchMode = isTouchDevice();
+document.body.classList.toggle('touch', touchMode);
+addEventListener('touchstart', () => { touchMode = true; document.body.classList.add('touch'); }, { passive: true, once: true });
+
 function resume() {
   if (!game) return;
   game.sfx.unlock();
-  game.input.lock();
+  if (touchMode || settings.keyboardOnly) {
+    if (touchMode) document.documentElement.requestFullscreen?.().catch(() => {});
+    setActive(true, true);
+  } else game.input.lock();
+}
+
+/**
+ * Starts or pauses play. With the mouse, play runs while the pointer is locked; keyboard-only and touch play
+ * (`free`) run without it and pause with Esc or the pause button.
+ */
+function setActive(on: boolean, free = false) {
+  const g = game;
+  if (!g?.ready) return;
+  g.input.free = on && free;
+  if (!on) { g.input.clear(); g.touch.reset(); }
+  g.running = on && !g.over;
+  document.body.classList.toggle('playing', g.running);
+  if (g.over) { menu.classList.add('hidden'); byId('end').classList.remove('hidden'); return; }
+  menu.classList.toggle('hidden', on);
+  if (!on) view.value = settings.view;
+  if (on) {
+    play.textContent = 'RESUME';
+    const key = `warstrike.welcomed.${g.map}`;
+    if (!sessionStorage.getItem(key)) {
+      g.hud.showHint(touchMode ? 'Left thumb moves, drag on the right to look · aim assist is on' : free
+        ? 'Keyboard only: arrow keys aim · Enter or Right Ctrl fires · Right Shift aims down sights' : g.welcome, 7);
+      sessionStorage.setItem(key, '1');
+    }
+  }
 }
 
 const TIPS = [
@@ -59,8 +93,11 @@ async function start(map: MapId) {
   play.classList.remove('hidden');
   leave.classList.remove('hidden');
   play.textContent = 'PLAY';
-  sub.textContent = `${MAP_NAMES[map]} · build 0.8`;
-  g.renderer.gl.domElement.addEventListener('click', () => { if (game && !game.input.locked) resume(); });
+  sub.textContent = `${MAP_NAMES[map]} · build 0.9`;
+  g.renderer.gl.domElement.addEventListener('click', () => { if (game && !game.input.active) resume(); });
+  g.input.onPause = () => setActive(false);
+  g.touch.onPause = () => setActive(false);
+  g.onOver = () => setActive(false);
   deploy.focus();
 }
 
@@ -83,19 +120,16 @@ if (sessionStorage.getItem('warstrike.autostart') === 'br') {
 document.addEventListener('pointerlockchange', () => {
   if (!game?.ready) return;
   const locked = document.pointerLockElement === game.renderer.gl.domElement;
-  game.running = locked && !game.over;
-  if (game.over) { menu.classList.add('hidden'); byId('end').classList.remove('hidden'); return; }
-  menu.classList.toggle('hidden', locked);
-  if (!locked) view.value = settings.view;
-  if (locked) {
-    play.textContent = 'RESUME';
-    const key = `warstrike.welcomed.${game.map}`;
-    if (!sessionStorage.getItem(key)) {
-      game.hud.showHint(game.welcome, 7);
-      sessionStorage.setItem(key, '1');
-    }
-  }
+  if (game.input.free && !locked) return;
+  setActive(locked);
 });
+// Some pages (embedded previews, locked-down browsers) refuse to capture the mouse: play keyboard only instead.
+// The first try asks for raw mouse input and may be refused before the plain retry succeeds, so wait a moment.
+document.addEventListener('pointerlockerror', () => setTimeout(() => {
+  if (!game?.ready || game.input.active || game.over) return;
+  setActive(true, true);
+  game.hud.showHint('Mouse capture is blocked here, so you\'re playing keyboard only: arrow keys aim · Enter fires · Right Shift aims', 8);
+}, 400));
 
 // --- Settings panel ---
 const sliders: [string, keyof typeof settings, (v: number) => string][] = [
@@ -104,6 +138,8 @@ const sliders: [string, keyof typeof settings, (v: number) => string][] = [
   ['scope', 'scopeSens', (v) => v.toFixed(2)],
   ['fov', 'fov', (v) => `${v}°`],
   ['vol', 'volume', (v) => `${Math.round(v * 100)}%`],
+  ['keys', 'keySens', (v) => v.toFixed(2)],
+  ['touch', 'touchSens', (v) => v.toFixed(2)],
 ];
 for (const [id, key, fmt] of sliders) {
   const input = byId<HTMLInputElement>(`s-${id}`), out = byId<HTMLOutputElement>(`o-${id}`);
@@ -131,6 +167,11 @@ view.addEventListener('change', () => { settings.view = view.value as 'third' | 
 const fps = byId<HTMLInputElement>('s-fps');
 fps.checked = settings.showFps;
 fps.addEventListener('change', () => { settings.showFps = fps.checked; saveSettings(settings); game?.applySettings(); });
+for (const [id, key] of [['s-assist', 'aimAssist'], ['s-kbonly', 'keyboardOnly']] as const) {
+  const box = byId<HTMLInputElement>(id);
+  box.checked = settings[key];
+  box.addEventListener('change', () => { settings[key] = box.checked; saveSettings(settings); });
+}
 
 for (const b of document.querySelectorAll<HTMLButtonElement>('.tabs button')) {
   b.addEventListener('click', () => {

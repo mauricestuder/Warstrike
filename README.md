@@ -16,6 +16,12 @@ Or build a single self-contained file you can double-click or send to a friend:
 npm run share      # → Warstrike.html (no server needed)
 ```
 
+## What's new in build 0.9
+
+- **Keyboard only.** Arrow keys (or Numpad 8 4 6 2) aim, Enter / Right Ctrl fires, Right Shift aims down sights, Q / E switch weapons. Tick *Keyboard only* in the settings, or it switches on by itself when a page won't let the game capture the mouse.
+- **Touch screens.** Phones and tablets get a move stick (push all the way forward to sprint), drag-to-look on the right, and buttons for fire, aim, jump, crouch, reload, swap, use, plates, map and view. Tap a buy station row to buy it.
+- **Aim assist for arrow keys and touch.** Near a visible enemy the turn slows a little and the view eases toward their chest. It never helps the mouse, stops at walls, and can be turned off in the settings.
+
 ## What's new in build 0.8
 
 - **Third person.** The camera now sits over your right shoulder and you see your whole soldier. Press **V** to switch to first person and back (it's also in the settings). Aiming down sights always goes to the sights in first person. In third person your shots leave from your character toward whatever is under the crosshair, and the camera stops short of walls.
@@ -258,6 +264,9 @@ npm run share      # → Warstrike.html (no server needed)
 | T | Refill ammo (range and free roam) |
 | H | Show controls |
 | Esc | Pause / settings |
+| Arrow keys | Aim without the mouse (light aim assist) |
+| Enter / Right Ctrl · Right Shift | Fire · aim down sights (keyboard only) |
+| Q / E | Previous / next weapon |
 
 ## Project layout
 

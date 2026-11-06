@@ -432,6 +432,7 @@ export class Match {
       if (win) g.sfx.victory(); else g.sfx.defeat();
       g.over = true;
       document.exitPointerLock();
+      g.onOver();
       const st = this.stats;
       const el = document.getElementById('end')!;
       el.className = win ? 'win' : 'lose';
